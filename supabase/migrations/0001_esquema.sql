@@ -193,6 +193,8 @@ create table public.gastos (
   -- se enlaza para que el saldo baje solo (sin doble registro).
   prestamo_id  uuid references public.prestamos(id) on delete set null,
   tarjeta_id   uuid references public.tarjetas(id) on delete set null,
+  -- Compra hecha con esta tarjeta (consumo): es gasto y sube el saldo de la tarjeta.
+  pagado_con_tarjeta_id uuid references public.tarjetas(id) on delete set null,
   created_by   uuid default auth.uid(),
   created_at   timestamptz not null default now()
 );

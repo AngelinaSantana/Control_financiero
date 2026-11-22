@@ -16,11 +16,7 @@ export async function cargarDeudas(ctx: Ctx, abonoMensualSimulado: Record<string
     leerTodo<MovTarjeta>(supabase, "tarjeta_movimientos", undefined, { columna: "fecha" }),
     // Sólo cuentan los pagos con fecha de hoy o anterior: un gasto fijo copiado
     // al mes siguiente no marca la cuota como pagada antes de tiempo.
-    leerTodo<Pick<Gasto, "fecha" | "monto" | "prestamo_id" | "tarjeta_id">>(
-      supabase, "gastos",
-      (q) => q.or("prestamo_id.not.is.null,tarjeta_id.not.is.null").lte("fecha", hoyISO()),
-      { columna: "fecha" },
-    ),
+    leerEnlazados(supabase),
   ]);
 
   const estadosPrestamos: EstadoPrestamo[] = prestamos.map((p) =>
@@ -39,10 +35,31 @@ export async function cargarDeudas(ctx: Ctx, abonoMensualSimulado: Record<string
       movsTarjeta,
       enlazados.filter((g) => g.tarjeta_id === t.id).map((g) => ({ fecha: g.fecha, monto: num(g.monto) })),
       tasa,
+      enlazados.filter((g) => g.pagado_con_tarjeta_id === t.id).map((g) => ({ fecha: g.fecha, monto: num(g.monto) })),
     ),
   );
 
-  return { prestamos, estadosPrestamos, tarjetas, estadosTarjetas, abonos, movsTarjeta };
+  return { prestamos, estadosPrestamos, tarjetas, estadosTarjetas, abonos, movsTarjeta, gastosEnlazados: enlazados };
+}
+
+/**
+ * Gastos enlazados a préstamos o tarjetas. Si la base aún no tiene la columna
+ * pagado_con_tarjeta_id (migración 0003 sin ejecutar) se lee sin ella.
+ */
+async function leerEnlazados(supabase: Ctx["supabase"]): Promise<Gasto[]> {
+  const hoy = hoyISO();
+  try {
+    return await leerTodo<Gasto>(
+      supabase, "gastos",
+      (q) => q.or("prestamo_id.not.is.null,tarjeta_id.not.is.null,pagado_con_tarjeta_id.not.is.null").lte("fecha", hoy),
+      { columna: "fecha" },
+    );
+  } catch (e) {
+    if (!String(e).includes("pagado_con_tarjeta_id")) throw e;
+    return leerTodo<Gasto>(
+      supabase, "gastos", (q) => q.or("prestamo_id.not.is.null,tarjeta_id.not.is.null").lte("fecha", hoy), { columna: "fecha" },
+    );
+  }
 }
 
 /** Movimientos de un año completo. */

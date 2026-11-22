@@ -12,7 +12,7 @@ import { num, type Tarjeta } from "@/lib/tipos";
 export default async function Tarjetas({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const ctx = await contexto();
-  const { estadosTarjetas, movsTarjeta } = await cargarDeudas(ctx);
+  const { estadosTarjetas, movsTarjeta, gastosEnlazados } = await cargarDeudas(ctx);
   const nPersona = mapaNombres(ctx.personas);
   const activas = estadosTarjetas.filter((e) => e.tarjeta.activa);
   const editar = sp.editar ? estadosTarjetas.find((e) => e.tarjeta.id === sp.editar)?.tarjeta : undefined;
@@ -23,7 +23,21 @@ export default async function Tarjetas({ searchParams }: { searchParams: Promise
   const limite = activas.reduce((s, e) => s + rd(e.limite, e.aRD), 0);
   const interes = activas.reduce((s, e) => s + rd(e.interesEstimado, e.aRD), 0);
   const sobregiro = activas.reduce((s, e) => s + rd(e.sobregiro, e.aRD), 0);
-  const recientes = [...movsTarjeta].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 15);
+  // Movimientos manuales + gastos enlazados (compras "pagado con" y pagos "a" la tarjeta)
+  const recientes = [
+    ...movsTarjeta.map((m) => ({ ...m, origen: "tarjeta" as const, montoTarjeta: num(m.monto) })),
+    ...gastosEnlazados.flatMap((g) => {
+      const tid = g.pagado_con_tarjeta_id ?? g.tarjeta_id;
+      const t = tid ? nTarjeta.get(tid) : undefined;
+      if (!t || g.fecha <= t.fecha_referencia) return [];
+      const aRD = t.moneda === "USD" ? num(ctx.hogar.tasa_cambio_usd) || 1 : 1;
+      return [{
+        id: g.id, tarjeta_id: t.id, fecha: g.fecha, descripcion: g.concepto,
+        tipo: (g.pagado_con_tarjeta_id ? "consumo" : "pago") as "consumo" | "pago",
+        monto: g.monto, origen: "gasto" as const, montoTarjeta: num(g.monto) / aRD,
+      }];
+    }),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 20);
 
   return (
     <>
@@ -81,19 +95,21 @@ export default async function Tarjetas({ searchParams }: { searchParams: Promise
         )}
         <p className="mt-3 text-xs text-tenue">
           Por encima de 30% de utilización afecta tu perfil de crédito; por encima de 80% es alarma. Si pagas el 100% antes de la fecha límite, el interés es cero.
-          Los pagos registrados en Movimientos con “¿Es pago de una tarjeta?” bajan el saldo solos.
+          Lo más cómodo: registra tus compras en Movimientos con <strong>“Pagado con: tarjeta”</strong> (suben la deuda y cuentan como gasto de su categoría)
+          y los pagos con <strong>“¿Es un pago A una tarjeta?”</strong> (bajan la deuda y no se suman otra vez como gasto).
+          Usa este formulario sólo para lo que no es un gasto del hogar: intereses, comisiones o ajustes.
         </p>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel titulo="Registrar consumo, pago o cargo">
+        <Panel titulo="Movimiento manual (intereses, comisiones, ajustes)">
           <form action={guardarMovTarjeta} className="grid grid-cols-2 gap-3">
             <input type="hidden" name="volver" value="/tarjetas" />
             <Campo etiqueta="Tarjeta" className="col-span-2">
               <Seleccion name="tarjeta_id" required opciones={activas.map((e) => ({ valor: e.tarjeta.id, etiqueta: e.tarjeta.nombre }))} />
             </Campo>
             <Campo etiqueta="Tipo">
-              <Seleccion name="tipo" valor="consumo" opciones={[
+              <Seleccion name="tipo" valor="cargo" opciones={[
                 { valor: "consumo", etiqueta: "Consumo" }, { valor: "pago", etiqueta: "Pago" }, { valor: "cargo", etiqueta: "Cargo / interés" },
               ]} />
             </Campo>
@@ -117,10 +133,10 @@ export default async function Tarjetas({ searchParams }: { searchParams: Promise
                   <li key={m.id} className="flex items-center justify-between gap-2 py-1.5">
                     <div className="min-w-0">
                       <div className="truncate">{m.descripcion || m.tipo} <span className="text-xs text-tenue">· {t?.nombre}</span></div>
-                      <div className="text-xs text-tenue">{formatoFecha(m.fecha)} · {m.tipo}</div>
+                      <div className="text-xs text-tenue">{formatoFecha(m.fecha)} · {m.tipo}{m.origen === "gasto" ? " · desde Movimientos" : ""}</div>
                     </div>
-                    <span className={`tabular-nums ${m.tipo === "pago" ? "text-bueno" : ""}`}>{m.tipo === "pago" ? "−" : "+"}{dinero(num(m.monto), t?.moneda)}</span>
-                    <BotonEliminar tabla="tarjeta_movimientos" id={m.id} volver="/tarjetas" texto="×" />
+                    <span className={`tabular-nums ${m.tipo === "pago" ? "text-bueno" : ""}`}>{m.tipo === "pago" ? "−" : "+"}{dinero(m.montoTarjeta, t?.moneda)}</span>
+                    {m.origen === "tarjeta" ? <BotonEliminar tabla="tarjeta_movimientos" id={m.id} volver="/tarjetas" texto="×" /> : <span className="w-3" />}
                   </li>
                 );
               })}

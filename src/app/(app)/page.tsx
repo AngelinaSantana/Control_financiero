@@ -6,7 +6,7 @@ import { contexto, leerTodo, mapaNombres } from "@/lib/datos";
 import { MESES_CORTOS, formatoFecha, mesDe } from "@/lib/fechas";
 import { estadoPersonales, resumenAnual, saldosAhorro } from "@/lib/finanzas/resumen";
 import { dinero, porcentaje } from "@/lib/formato";
-import { num, type FondoAhorro, type MontoPresupuesto, type MovAhorro, type PagoPersonal, type PrestamoPersonal } from "@/lib/tipos";
+import { esPagoTarjeta, num, type FondoAhorro, type MontoPresupuesto, type MovAhorro, type PagoPersonal, type PrestamoPersonal } from "@/lib/tipos";
 
 export default async function Inicio({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
@@ -34,7 +34,7 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
   const nombreCat = mapaNombres(categorias);
   const gastosMes = gastos.filter((g) => mesDe(g.fecha) === mes);
   const porCat = new Map<string, number>();
-  for (const g of gastosMes) {
+  for (const g of gastosMes.filter((g) => !esPagoTarjeta(g))) {
     const n = nombreCat.get(g.categoria_id ?? "") ?? "Sin categoría";
     porCat.set(n, (porCat.get(n) ?? 0) + num(g.monto));
   }
@@ -142,7 +142,9 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
                 <li key={m.es + m.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{m.concepto}</div>
-                    <div className="text-xs text-tenue">{formatoFecha(m.fecha)} · {nombreCat.get(m.categoria_id ?? "") ?? "—"}</div>
+                    <div className="text-xs text-tenue">
+                      {formatoFecha(m.fecha)} · {m.es === "gasto" && esPagoTarjeta(m) ? "Pago a tarjeta (no suma)" : nombreCat.get(m.categoria_id ?? "") ?? "—"}
+                    </div>
                   </div>
                   <span className={`shrink-0 font-semibold tabular-nums ${m.es === "ingreso" ? "text-bueno" : ""}`}>
                     {m.es === "ingreso" ? "+" : "−"}{dinero(num(m.monto))}

@@ -42,7 +42,7 @@ scripts/importar_excel.py   importación de tu Excel
 ### 1. Crear la base de datos en Supabase
 1. Crea un proyecto gratis en [supabase.com](https://supabase.com).
 2. Ve a **SQL Editor**, pega el contenido de `supabase/migrations/0001_esquema.sql` y pulsa **Run**.
-   Si ya lo habías ejecutado antes de esta versión, ejecuta también `supabase/migrations/0002_permisos.sql`: da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
+   Si ya lo habías ejecutado antes de esta versión, ejecuta también, en orden, `0002_permisos.sql` y `0003_pagado_con_tarjeta.sql`. El 0002 da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
 3. En **Authentication → Providers → Email**, deja activado Email. Si no quieres confirmar el correo al registrarte, desactiva "Confirm email".
 4. En **Project Settings → API** copia la *Project URL* y la *anon public key*.
 
@@ -80,7 +80,8 @@ En Supabase → Authentication → URL Configuration, pon la URL de Vercel como 
 
 - **Préstamos**: interés = saldo × (tasa anual ÷ base de días) × días reales del período. Capital = cuota total − interés − seguro. En la última cuota pactada se liquida el saldo restante.
   Si registras un gasto y eliges "¿Es cuota de un préstamo?", el saldo baja solo. Se suman los montos, así que una cuota pagada en dos quincenas cuenta como una.
-- **Tarjetas**: saldo = saldo conocido + consumos + cargos − pagos (incluye los gastos marcados como pago de esa tarjeta). El interés estimado sale del saldo que queda después del pago programado.
+- **Tarjetas**: saldo = saldo conocido + consumos + cargos − pagos. Un gasto con **"Pagado con: tarjeta"** cuenta como gasto de su categoría y sube la deuda;
+  un gasto marcado **"Pago A una tarjeta"** baja la deuda y es una transferencia: no se suma otra vez en los gastos (sí en el servicio de deuda). El interés estimado sale del saldo que queda después del pago programado.
 - **Resumen**: el servicio de deuda es la suma de los gastos en categorías que empiezan con "Deuda". La tasa de ahorro es aportes menos retiros, dividido entre los ingresos.
 - **Préstamos personales**: no cuentan como ingreso ni como gasto, para no inflar los ingresos reales.
 

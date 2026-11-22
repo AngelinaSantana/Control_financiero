@@ -1,5 +1,6 @@
 import { anioDe, mesDe } from "../fechas";
 import {
+  esPagoTarjeta,
   num,
   type Categoria,
   type ConceptoPresupuesto,
@@ -26,6 +27,7 @@ export interface FilaResumen {
   gastosVariables: number;
   gastosUnicos: number;
   servicioDeuda: number;
+  pagosTarjetas: number;
   flujoNeto: number;
   ahorro: number;
   sinFondo: number;
@@ -38,7 +40,7 @@ function fila(): FilaResumen {
   return {
     ingresos: 0, ingresosFijos: 0, ingresosVariables: 0, ingresosUnicos: 0,
     gastos: 0, gastosFijos: 0, gastosVariables: 0, gastosUnicos: 0,
-    servicioDeuda: 0, flujoNeto: 0, ahorro: 0, sinFondo: 0,
+    servicioDeuda: 0, pagosTarjetas: 0, flujoNeto: 0, ahorro: 0, sinFondo: 0,
     tasaAhorro: null, pctDeuda: null, pctGasto: null,
   };
 }
@@ -80,6 +82,13 @@ export function resumenAnual(
     if (anioDe(g.fecha) !== anio) continue;
     const f = meses[mesDe(g.fecha) - 1];
     const m = num(g.monto);
+    // Pago a tarjeta = transferencia: cuenta como servicio de deuda, no como gasto
+    // (las compras con la tarjeta ya se registraron como gasto de su categoría).
+    if (esPagoTarjeta(g)) {
+      f.pagosTarjetas += m;
+      f.servicioDeuda += m;
+      continue;
+    }
     f.gastos += m;
     if (g.tipo === "Fijo") f.gastosFijos += m;
     else if (g.tipo === "Variable") f.gastosVariables += m;
@@ -137,7 +146,7 @@ export function desviaciones(
     f.planeado[m.mes - 1] += num(m.monto);
   }
   for (const g of gastos) {
-    if (anioDe(g.fecha) !== anio) continue;
+    if (anioDe(g.fecha) !== anio || esPagoTarjeta(g)) continue;
     const f = filas.get(g.categoria_id ?? "") ?? sinCat;
     f.real[mesDe(g.fecha) - 1] += num(g.monto);
   }

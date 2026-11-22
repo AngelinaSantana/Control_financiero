@@ -56,15 +56,28 @@ export function FormMovimiento({ tabla, volver, personas, cuentas, categorias, p
       </Campo>
       {esGasto && (
         <>
+          <Campo etiqueta="Pagado con">
+            <Seleccion
+              name="pagado_con_tarjeta_id"
+              vacio="Efectivo / cuenta bancaria"
+              valor={g?.pagado_con_tarjeta_id}
+              opciones={tarjetas.map((t) => ({ valor: t.id, etiqueta: `Tarjeta: ${t.nombre}` }))}
+            />
+          </Campo>
+          {g?.pagado_con_tarjeta_id && <input type="hidden" name="tenia_pagado_con" value="1" />}
           <Campo etiqueta="¿Es cuota de un préstamo?">
             <Seleccion name="prestamo_id" vacio="No" valor={g?.prestamo_id} opciones={prestamos.map((p) => ({ valor: p.id, etiqueta: p.nombre }))} />
           </Campo>
-          <Campo etiqueta="¿Es pago de una tarjeta?">
+          <Campo etiqueta="¿Es un pago A una tarjeta?">
             <Seleccion name="tarjeta_id" vacio="No" valor={g?.tarjeta_id} opciones={tarjetas.map((t) => ({ valor: t.id, etiqueta: t.nombre }))} />
           </Campo>
+          <p className="col-span-2 self-end text-xs text-tenue md:col-span-1">
+            <strong>Pagado con tarjeta</strong>: la compra cuenta como gasto y sube la deuda de la tarjeta.{" "}
+            <strong>Pago a una tarjeta</strong>: baja la deuda y no se suma otra vez como gasto.
+          </p>
         </>
       )}
-      <Campo etiqueta="Notas" className={esGasto ? "col-span-2 md:col-span-1" : "col-span-2"}>
+      <Campo etiqueta="Notas" className="col-span-2">
         <input name="notas" defaultValue={editar?.notas ?? ""} className={claseInput} />
       </Campo>
       <div className="col-span-2 flex items-end md:col-span-4">

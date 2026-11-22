@@ -6,7 +6,7 @@ import { Encabezado, Mensajes, Panel, Seleccion, SelectorMes, Vacio, claseBotonS
 import { contexto, leerTodo, mapaNombres } from "@/lib/datos";
 import { MESES, formatoFecha, rangoMes } from "@/lib/fechas";
 import { dinero } from "@/lib/formato";
-import { num, type Gasto, type Ingreso, type Prestamo, type Tarjeta } from "@/lib/tipos";
+import { esPagoTarjeta, num, type Gasto, type Ingreso, type Prestamo, type Tarjeta } from "@/lib/tipos";
 
 type SP = Record<string, string | undefined>;
 
@@ -46,7 +46,9 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
   const nCat = mapaNombres(categorias);
   const nPrestamo = new Map(prestamos.map((p) => [p.id, `${p.acreedor} – ${p.descripcion}`]));
   const nTarjeta = mapaNombres(tarjetas);
-  const total = filas.reduce((s, f) => s + num(f.monto), 0);
+  const transferencias = tabla === "gastos" ? filas.filter((f) => esPagoTarjeta(f as Gasto)) : [];
+  const total = filas.reduce((s, f) => s + num(f.monto), 0) - transferencias.reduce((s, f) => s + num(f.monto), 0);
+  const totalTransf = transferencias.reduce((s, f) => s + num(f.monto), 0);
 
   const base = `/movimientos?mes=${claveMes}&tipo=${tabla}`;
   const filtros = new URLSearchParams();
@@ -122,7 +124,10 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
 
         <div className="mb-2 flex justify-between text-sm">
           <span className="text-tenue">{filas.length} movimientos</span>
-          <span className="font-semibold tabular-nums">Total {dinero(total)}</span>
+          <span className="text-right">
+            <span className="font-semibold tabular-nums">Total {dinero(total)}</span>
+            {totalTransf > 0 && <span className="block text-xs text-tenue">+ {dinero(totalTransf)} en pagos a tarjetas (no suman)</span>}
+          </span>
         </div>
 
         {filas.length === 0 ? <Vacio>No hay {tabla} en este mes.</Vacio> : (
@@ -137,7 +142,13 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
               <tbody>
                 {filas.map((f) => {
                   const g = f as Gasto;
-                  const enlace = g.prestamo_id ? nPrestamo.get(g.prestamo_id) : g.tarjeta_id ? nTarjeta.get(g.tarjeta_id) : null;
+                  const enlace = g.prestamo_id
+                    ? `Cuota de ${nPrestamo.get(g.prestamo_id)}`
+                    : g.tarjeta_id
+                      ? `Pago a ${nTarjeta.get(g.tarjeta_id)} (transferencia, no suma como gasto)`
+                      : g.pagado_con_tarjeta_id
+                        ? `Pagado con ${nTarjeta.get(g.pagado_con_tarjeta_id)}`
+                        : null;
                   return (
                     <tr key={f.id}>
                       <td className="whitespace-nowrap">{formatoFecha(f.fecha)}</td>
@@ -151,7 +162,7 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
                       <td>{nCuenta.get(f.cuenta_id ?? "") ?? "—"}</td>
                       <td>{f.tipo}</td>
                       <td>{f.quincena}</td>
-                      <td className="num font-semibold">{dinero(num(f.monto))}</td>
+                      <td className={`num font-semibold ${esPagoTarjeta(g) ? "text-tenue" : ""}`}>{dinero(num(f.monto))}</td>
                       <td className="whitespace-nowrap">
                         <Link href={`${volver}&editar=${f.id}`} className="mr-3 text-xs font-medium text-marca hover:underline">Editar</Link>
                         <BotonEliminar tabla={tabla} id={f.id} volver={volver} />
