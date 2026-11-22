@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { cerrarSesion, crearHogar, unirseHogar } from "@/app/acciones";
 import { Campo, Mensajes, claseBoton, claseBotonSec, claseInput } from "@/components/ui";
+import { mensajeBase } from "@/lib/datos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 export default async function Hogar({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -8,8 +9,9 @@ export default async function Hogar({ searchParams }: { searchParams: Promise<Re
   const supabase = await crearClienteServidor();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const { data: miembro } = await supabase.from("miembros").select("hogar_id").eq("user_id", user.id).maybeSingle();
+  const { data: miembro, error } = await supabase.from("miembros").select("hogar_id").eq("user_id", user.id).maybeSingle();
   if (miembro) redirect("/");
+  const errorBase = error ? mensajeBase(error.message) : undefined;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -17,7 +19,7 @@ export default async function Hogar({ searchParams }: { searchParams: Promise<Re
       <p className="mb-6 text-sm text-tenue">
         Cada uno entra con su propia cuenta y ambos ven el mismo presupuesto. Una persona crea el hogar y la otra se une con el código de invitación.
       </p>
-      <Mensajes error={sp.error} />
+      <Mensajes error={errorBase ?? sp.error} />
       <div className="grid gap-4 md:grid-cols-2">
         <form action={crearHogar} className="flex flex-col gap-3 rounded-2xl border border-borde bg-superficie p-5 shadow-sm">
           <h2 className="font-semibold">Crear un hogar nuevo</h2>

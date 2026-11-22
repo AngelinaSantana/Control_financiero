@@ -9,11 +9,14 @@ export const contexto = cache(async () => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: miembro } = await supabase
+  const { data: miembro, error } = await supabase
     .from("miembros")
     .select("hogar_id, persona_id")
     .eq("user_id", user.id)
     .maybeSingle();
+  // Un error aquí (p. ej. falta de permisos en la base) no debe confundirse
+  // con "aún no tienes hogar": se muestra en la pantalla de bienvenida.
+  if (error) redirect(`/hogar?error=${encodeURIComponent(mensajeBase(error.message))}`);
   if (!miembro) redirect("/hogar");
 
   const [hogar, personas, cuentas, categorias] = await Promise.all([
@@ -35,7 +38,18 @@ export const contexto = cache(async () => {
   };
 });
 
-type Supa = Awaited<ReturnType<typeof crearClienteServidor>>;
+/** Traduce errores de base de datos a un mensaje que diga qué hacer. */
+export function mensajeBase(m: string): string {
+  if (/permission denied|42501/i.test(m)) {
+    return "La base de datos no da permisos a la app. En Supabase → SQL Editor ejecuta supabase/migrations/0002_permisos.sql y vuelve a intentar.";
+  }
+  if (/does not exist|schema cache|PGRST205|42P01/i.test(m)) {
+    return "Faltan tablas en la base de datos. Ejecuta supabase/migrations/0001_esquema.sql en Supabase → SQL Editor.";
+  }
+  return `Error de base de datos: ${m}`;
+}
+
+type Supa =Awaited<ReturnType<typeof crearClienteServidor>>;
 
 /**
  * Lee todas las filas de una tabla (Supabase devuelve máx. 1000 por consulta).
