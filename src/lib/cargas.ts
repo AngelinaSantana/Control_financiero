@@ -1,7 +1,7 @@
 import { contexto, leerTodo } from "./datos";
 import { estadoPrestamo, type EstadoPrestamo } from "./finanzas/prestamos";
 import { estadoTarjeta, type EstadoTarjeta } from "./finanzas/tarjetas";
-import { iso } from "./fechas";
+import { hoyISO, iso } from "./fechas";
 import { num, type AbonoPrestamo, type Gasto, type Ingreso, type MovAhorro, type MovTarjeta, type Prestamo, type Tarjeta } from "./tipos";
 
 type Ctx = Awaited<ReturnType<typeof contexto>>;
@@ -14,8 +14,12 @@ export async function cargarDeudas(ctx: Ctx, abonoMensualSimulado: Record<string
     leerTodo<AbonoPrestamo>(supabase, "prestamo_abonos", undefined, { columna: "fecha" }),
     leerTodo<Tarjeta>(supabase, "tarjetas", undefined, { columna: "nombre" }),
     leerTodo<MovTarjeta>(supabase, "tarjeta_movimientos", undefined, { columna: "fecha" }),
+    // Sólo cuentan los pagos con fecha de hoy o anterior: un gasto fijo copiado
+    // al mes siguiente no marca la cuota como pagada antes de tiempo.
     leerTodo<Pick<Gasto, "fecha" | "monto" | "prestamo_id" | "tarjeta_id">>(
-      supabase, "gastos", (q) => q.or("prestamo_id.not.is.null,tarjeta_id.not.is.null"), { columna: "fecha" },
+      supabase, "gastos",
+      (q) => q.or("prestamo_id.not.is.null,tarjeta_id.not.is.null").lte("fecha", hoyISO()),
+      { columna: "fecha" },
     ),
   ]);
 

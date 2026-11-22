@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { BotonEliminar } from "@/components/BotonEliminar";
 import { FormMovimiento } from "@/components/FormMovimiento";
+import { PasarFijos } from "@/components/PasarFijos";
 import { Encabezado, Mensajes, Panel, Seleccion, SelectorMes, Vacio, claseBotonSec, claseInput, leerMes } from "@/components/ui";
 import { contexto, leerTodo, mapaNombres } from "@/lib/datos";
-import { formatoFecha, rangoMes } from "@/lib/fechas";
+import { MESES, formatoFecha, rangoMes } from "@/lib/fechas";
 import { dinero } from "@/lib/formato";
 import { num, type Gasto, type Ingreso, type Prestamo, type Tarjeta } from "@/lib/tipos";
 
@@ -18,7 +19,11 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
   const [desde, hasta] = rangoMes(anio, mes);
   const claveMes = `${anio}-${String(mes).padStart(2, "0")}`;
 
-  const [filas, prestamos, tarjetas] = await Promise.all([
+  const [anioSig, mesSig] = mes === 12 ? [anio + 1, 1] : [anio, mes + 1];
+  const [desdeSig, hastaSig] = rangoMes(anioSig, mesSig);
+  const claveSig = `${anioSig}-${String(mesSig).padStart(2, "0")}`;
+
+  const [filas, prestamos, tarjetas, fijosMes, fijosSig] = await Promise.all([
     leerTodo<Gasto | Ingreso>(supabase, tabla, (q) => {
       let r = q.gte("fecha", desde).lte("fecha", hasta);
       if (sp.persona) r = r.eq("persona_id", sp.persona);
@@ -28,6 +33,8 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
     }, { columna: "fecha", asc: false }),
     leerTodo<Prestamo>(supabase, "prestamos", (q) => q.eq("activo", true), { columna: "acreedor" }),
     leerTodo<Tarjeta>(supabase, "tarjetas", (q) => q.eq("activa", true), { columna: "nombre" }),
+    leerTodo<Gasto | Ingreso>(supabase, tabla, (q) => q.eq("tipo", "Fijo").gte("fecha", desde).lte("fecha", hasta), { columna: "fecha" }),
+    leerTodo<Gasto | Ingreso>(supabase, tabla, (q) => q.eq("tipo", "Fijo").gte("fecha", desdeSig).lte("fecha", hastaSig), { columna: "fecha" }),
   ]);
 
   const editar = sp.editar
@@ -86,6 +93,17 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
           {editar && <Link href={volver} className={`${claseBotonSec} mt-3`}>Cancelar edición</Link>}
         </div>
       </details>
+
+      {fijosMes.length > 0 && (
+        <PasarFijos
+          tabla={tabla}
+          fijos={fijosMes}
+          existentes={fijosSig}
+          nombreMesSig={`${MESES[mesSig - 1]} ${anioSig}`}
+          volver={`/movimientos?mes=${claveSig}&tipo=${tabla}`}
+          nombrePersona={(id) => nPersona.get(id ?? "") ?? "—"}
+        />
+      )}
 
       <Panel>
         <form className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-5" action="/movimientos">
