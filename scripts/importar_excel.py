@@ -70,6 +70,10 @@ class Gen:
         real = {"Wife": self.a.wife, "Husband": self.a.husband}.get(nombre, nombre)
         return f"(select id from personas where hogar_id = h and lower(nombre) = lower({q(real)}))"
 
+    def fondo(self, nombre):
+        """Usa los nombres reales en los fondos individuales (Ahorro Individual Wife → … Angelina)."""
+        return str(nombre).replace("Wife", self.a.wife).replace("Husband", self.a.husband)
+
     def cuenta(self, nombre):
         return "null" if not nombre else f"(select id from cuentas where hogar_id = h and nombre = {q(nombre)})"
 
@@ -124,7 +128,7 @@ def main():
         if r[4]: listas["ingreso"].add(r[4])
         if r[8]: listas["persona"].add(r[8])
         if r[10]: listas["cuenta"].add(r[10])
-        if r[14]: listas["fondo"].add(r[14])
+        if r[14]: listas["fondo"].add(g.fondo(r[14]))
     for p in sorted(listas["persona"] - {"Couple"}):
         real = {"Wife": a.wife, "Husband": a.husband}.get(p, p)
         w(f"  insert into personas (hogar_id, nombre, orden) values (h, {q(real)}, 5) on conflict do nothing;")
@@ -225,7 +229,7 @@ def main():
             continue
         n_aho += 1
         w(f"  insert into ahorro_movimientos (hogar_id, fondo_id, fecha, persona_id, tipo, monto, cuenta_id, notas)"
-          f" values (h, (select id from fondos_ahorro where hogar_id = h and nombre = {q(fondo)}), {q(fecha)}, {g.persona(resp)},"
+          f" values (h, (select id from fondos_ahorro where hogar_id = h and nombre = {q(g.fondo(fondo))}), {q(fecha)}, {g.persona(resp)},"
           f" {q('retiro' if str(mov).lower().startswith('retiro') else 'aporte')}, {num(monto):.2f}, {g.cuenta(cuenta)}, {q(notas)});")
 
     w(f"  raise notice 'Importados: % ingresos, % gastos, % préstamos, % tarjetas, % movimientos de ahorro',"
