@@ -42,6 +42,7 @@ scripts/importar_excel.py   importación de tu Excel
 ### 1. Crear la base de datos en Supabase
 1. Crea un proyecto gratis en [supabase.com](https://supabase.com).
 2. Ve a **SQL Editor**, pega el contenido de `supabase/migrations/0001_esquema.sql` y pulsa **Run**.
+   Si ya lo habías ejecutado antes de esta versión, ejecuta también `supabase/migrations/0002_permisos.sql`: da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
 3. En **Authentication → Providers → Email**, deja activado Email. Si no quieres confirmar el correo al registrarte, desactiva "Confirm email".
 4. En **Project Settings → API** copia la *Project URL* y la *anon public key*.
 

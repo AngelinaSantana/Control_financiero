@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { contexto } from "@/lib/datos";
+import { sumarMeses } from "@/lib/fechas";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 // ---------------------------------------------------------------------
@@ -191,6 +192,43 @@ export async function guardarMovimiento(fd: FormData) {
     const id = opc(fd, "id");
     revisar(id ? await supabase.from(tabla).update(fila).eq("id", id) : await supabase.from(tabla).insert(fila));
     return tabla === "ingresos" ? "Ingreso guardado" : "Gasto guardado";
+  });
+}
+
+/**
+ * Copia al mes siguiente los movimientos fijos elegidos (sueldo, alquiler,
+ * cuotas…). Cada uno conserva el día del mes; el monto puede ajustarse.
+ */
+export async function copiarFijos(fd: FormData) {
+  await ejecutar(fd, async () => {
+    const { supabase, hogarId } = await contexto();
+    const tabla = txt(fd, "tabla") === "ingresos" ? "ingresos" : "gastos";
+    const ids = fd.getAll("ids").map(String).filter(Boolean);
+    if (!ids.length) throw new ErrorUsuario("No marcaste ningún movimiento para copiar");
+
+    const { data } = revisar(await supabase.from(tabla).select("*").in("id", ids));
+    const filas = (data ?? []).map((m: Record<string, unknown>) => {
+      const fila: Record<string, unknown> = {
+        hogar_id: hogarId,
+        fecha: sumarMeses(String(m.fecha), 1),
+        persona_id: m.persona_id,
+        concepto: m.concepto,
+        categoria_id: m.categoria_id,
+        tipo: m.tipo,
+        cuenta_id: m.cuenta_id,
+        quincena: m.quincena,
+        monto: numero(fd, `monto_${m.id}`) ?? m.monto,
+        notas: m.notas,
+      };
+      if (tabla === "gastos") {
+        fila.prestamo_id = m.prestamo_id;
+        fila.tarjeta_id = m.tarjeta_id;
+      }
+      return fila;
+    });
+    if (!filas.length) throw new ErrorUsuario("No se encontraron los movimientos");
+    revisar(await supabase.from(tabla).insert(filas));
+    return `${filas.length} ${tabla === "ingresos" ? "ingreso(s)" : "gasto(s)"} copiado(s) al mes siguiente`;
   });
 }
 
