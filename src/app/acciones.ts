@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { contexto } from "@/lib/datos";
+import { contexto, mensajeBase } from "@/lib/datos";
 import { sumarMeses } from "@/lib/fechas";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
@@ -69,6 +69,7 @@ function revisar<T extends { error: { message: string } | null }>(r: T): T {
 }
 
 function traducirError(m: string) {
+  if (m.includes("pagado_con_tarjeta_id")) return mensajeBase(m);
   if (m.includes("violates foreign key") || m.includes("restrict")) return "No se puede borrar: está en uso.";
   if (m.includes("duplicate key")) return "Ya existe un registro con ese nombre.";
   if (m.includes("Invalid login credentials")) return "Correo o contraseña incorrectos.";
@@ -188,6 +189,12 @@ export async function guardarMovimiento(fd: FormData) {
     if (tabla === "gastos") {
       fila.prestamo_id = opc(fd, "prestamo_id");
       fila.tarjeta_id = opc(fd, "tarjeta_id");
+      const pagadoCon = opc(fd, "pagado_con_tarjeta_id");
+      // Sólo se envía si se usa (o se está quitando), para no romper bases sin la migración 0003.
+      if (pagadoCon || fd.get("tenia_pagado_con") === "1") fila.pagado_con_tarjeta_id = pagadoCon;
+      if (pagadoCon && fila.tarjeta_id) {
+        throw new ErrorUsuario("Un gasto no puede ser a la vez una compra con tarjeta y un pago a una tarjeta");
+      }
     }
     const id = opc(fd, "id");
     revisar(id ? await supabase.from(tabla).update(fila).eq("id", id) : await supabase.from(tabla).insert(fila));
@@ -223,6 +230,7 @@ export async function copiarFijos(fd: FormData) {
       if (tabla === "gastos") {
         fila.prestamo_id = m.prestamo_id;
         fila.tarjeta_id = m.tarjeta_id;
+        if (m.pagado_con_tarjeta_id) fila.pagado_con_tarjeta_id = m.pagado_con_tarjeta_id;
       }
       return fila;
     });

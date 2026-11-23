@@ -16,6 +16,7 @@ Está basada en el libro `Control_Financiero_Familiar.xlsx` y reproduce sus hoja
 | Ahorros | **Ahorros**: fondos, aportes y retiros, meta del fondo de emergencia |
 | Resumen / Desviaciones | **Inicio** y **Reportes**: flujo neto, indicadores, planeado vs. real |
 | — (nuevo) | **Personales**: lo que te deben y lo que debes a otras personas |
+| — (nuevo) | **Importar**: sube el PDF del estado de cuenta; Claude extrae los movimientos y tú los revisas antes de registrarlos |
 
 ## Tecnología
 
@@ -27,11 +28,13 @@ Está basada en el libro `Control_Financiero_Familiar.xlsx` y reproduce sus hoja
 src/
   app/
     (app)/             pantallas con sesión: inicio, movimientos, presupuesto, préstamos…
+    (app)/importar/    importación de estados de cuenta (PDF → Claude → revisión)
     login/  hogar/     inicio de sesión; crear hogar o unirse a uno
     acciones.ts        todas las escrituras (Server Actions)
   components/          interfaz reutilizable
   lib/
     finanzas/          cálculos puros (amortización, tarjetas, resumen) + pruebas
+    importacion/       lectura de PDF, extracción con Claude y propuestas + pruebas
     datos.ts cargas.ts lectura desde Supabase
 supabase/migrations/   esquema SQL completo (tablas, RLS, funciones)
 scripts/importar_excel.py   importación de tu Excel
@@ -42,7 +45,7 @@ scripts/importar_excel.py   importación de tu Excel
 ### 1. Crear la base de datos en Supabase
 1. Crea un proyecto gratis en [supabase.com](https://supabase.com).
 2. Ve a **SQL Editor**, pega el contenido de `supabase/migrations/0001_esquema.sql` y pulsa **Run**.
-   Si ya lo habías ejecutado antes de esta versión, ejecuta también `supabase/migrations/0002_permisos.sql`: da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
+   Si ya lo habías ejecutado antes de esta versión, ejecuta también, en orden, `0002_permisos.sql`, `0003_pagado_con_tarjeta.sql` y `0004_reglas_importacion.sql`. El 0002 da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
 3. En **Authentication → Providers → Email**, deja activado Email. Si no quieres confirmar el correo al registrarte, desactiva "Confirm email".
 4. En **Project Settings → API** copia la *Project URL* y la *anon public key*.
 
@@ -72,7 +75,19 @@ Pega `importar.sql` en el SQL Editor de Supabase y ejecútalo. El script:
 
 > `importar.sql` y el `.xlsx` contienen tus datos personales: están en `.gitignore` y no deben subirse al repositorio.
 
-### 5. Publicar (opcional)
+### 5. Importar estados de cuenta en PDF (opcional)
+La pantalla **Importar** usa la API de Claude para leer los PDF de los bancos.
+1. Crea una cuenta en [platform.claude.com](https://platform.claude.com), agrega saldo en **Billing** y crea una clave en **API Keys**.
+2. En Vercel → Settings → Environment Variables agrega `ANTHROPIC_API_KEY` con esa clave y vuelve a desplegar.
+3. Ejecuta `supabase/migrations/0004_reglas_importacion.sql` en Supabase (guarda lo que la app aprende de tus correcciones).
+
+Cómo funciona: la app abre el PDF (también con contraseña, que no se guarda), extrae el texto y se lo envía a Claude
+(`claude-opus-5-5`, salida estructurada validada). Cada movimiento llega con una propuesta (compra con tarjeta, pago a tarjeta,
+cargo/interés, gasto, ingreso, cuota de préstamo o ignorar) que se puede corregir. Los ya registrados (mismo monto y fecha ±3 días)
+vienen marcados para ignorar, y al importar un estado de tarjeta se puede actualizar su saldo conocido al saldo del corte.
+Costo aproximado: unos centavos de dólar por estado de cuenta.
+
+### 6. Publicar (opcional)
 Importa el repositorio en [Vercel](https://vercel.com), agrega las variables `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`, y despliega.
 En Supabase → Authentication → URL Configuration, pon la URL de Vercel como *Site URL*.
 
@@ -80,7 +95,8 @@ En Supabase → Authentication → URL Configuration, pon la URL de Vercel como 
 
 - **Préstamos**: interés = saldo × (tasa anual ÷ base de días) × días reales del período. Capital = cuota total − interés − seguro. En la última cuota pactada se liquida el saldo restante.
   Si registras un gasto y eliges "¿Es cuota de un préstamo?", el saldo baja solo. Se suman los montos, así que una cuota pagada en dos quincenas cuenta como una.
-- **Tarjetas**: saldo = saldo conocido + consumos + cargos − pagos (incluye los gastos marcados como pago de esa tarjeta). El interés estimado sale del saldo que queda después del pago programado.
+- **Tarjetas**: saldo = saldo conocido + consumos + cargos − pagos. Un gasto con **"Pagado con: tarjeta"** cuenta como gasto de su categoría y sube la deuda;
+  un gasto marcado **"Pago A una tarjeta"** baja la deuda y es una transferencia: no se suma otra vez en los gastos (sí en el servicio de deuda). El interés estimado sale del saldo que queda después del pago programado.
 - **Resumen**: el servicio de deuda es la suma de los gastos en categorías que empiezan con "Deuda". La tasa de ahorro es aportes menos retiros, dividido entre los ingresos.
 - **Préstamos personales**: no cuentan como ingreso ni como gasto, para no inflar los ingresos reales.
 

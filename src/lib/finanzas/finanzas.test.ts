@@ -78,6 +78,16 @@ describe("tarjetas (hoja Tarjetas)", () => {
   it("pago que no cubre intereses", () => {
     expect(mesesParaSaldar(100000, 1000, 0.05)).toBe(Infinity);
   });
+  it("compras 'pagado con' suben el saldo; en tarjetas US$ se convierten", () => {
+    const t: Tarjeta = {
+      id: "u", nombre: "BSC US$", persona_id: null, moneda: "USD", limite: 400, tasa_anual: 0.6,
+      dia_corte: 8, dia_pago: 5, pago_minimo: 40, pago_programado: 50,
+      saldo_referencia: 100, fecha_referencia: "2026-10-31", activa: true,
+    };
+    const e = estadoTarjeta(t, [], [{ fecha: "2026-11-05", monto: 1219 }], 60.95,
+      [{ fecha: "2026-11-02", monto: 3047.5 }, { fecha: "2026-10-30", monto: 999 }]);
+    expect(e.saldo).toBe(130); // 100 + 50 (3047.50 RD$) − 20 (1219 RD$); la compra anterior a la foto no cuenta
+  });
   it("saldo, sobregiro e interés", () => {
     const t: Tarjeta = {
       id: "t", nombre: "ISI", persona_id: null, moneda: "DOP", limite: 52000, tasa_anual: 0.4,
@@ -117,6 +127,19 @@ describe("resumen y desviaciones", () => {
     expect(jul.flujoNeto).toBe(19206);
     expect(jul.tasaAhorro).toBeCloseTo(0.1);
     expect(jul.sinFondo).toBe(14206);
+  });
+  it("un pago a tarjeta no suma como gasto pero sí como servicio de deuda", () => {
+    const conPago: Gasto[] = [...gastos,
+      { ...base, id: "g3", fecha: "2026-07-20", concepto: "Pago TC ISI", categoria_id: null, tipo: "Variable", monto: 5000, prestamo_id: null, tarjeta_id: "isi" },
+      { ...base, id: "g4", fecha: "2026-07-21", concepto: "Super con ISI", categoria_id: "viv", tipo: "Variable", monto: 1000, prestamo_id: null, tarjeta_id: null, pagado_con_tarjeta_id: "isi" },
+    ];
+    const jul = resumenAnual(2026, ingresos, conPago, [], cats).meses[6];
+    expect(jul.gastos).toBe(31794);          // 30794 + compra con tarjeta; el pago no suma
+    expect(jul.pagosTarjetas).toBe(5000);
+    expect(jul.servicioDeuda).toBe(15794);   // préstamo 10794 + pago tarjeta 5000
+    const d = desviaciones(2026, cats, [], [], conPago);
+    expect(d.find((f) => f.categoriaId === "viv")!.real[6]).toBe(21000);
+    expect(d.find((f) => f.categoriaId === "")).toBeUndefined();
   });
   it("compara planeado vs real", () => {
     const d = desviaciones(2026, cats,

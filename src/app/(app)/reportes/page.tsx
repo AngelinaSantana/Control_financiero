@@ -18,6 +18,7 @@ const FILAS: { clave: keyof FilaResumen; etiqueta: string; tipo?: "pct"; grupo?:
   { clave: "gastosVariables", etiqueta: "Variables" },
   { clave: "gastosUnicos", etiqueta: "Pago único" },
   { clave: "servicioDeuda", etiqueta: "Servicio de deuda (préstamos + tarjetas)" },
+  { clave: "pagosTarjetas", etiqueta: "Pagos a tarjetas (transferencias, no suman en gastos)" },
   { clave: "flujoNeto", etiqueta: "Flujo neto (ingresos − gastos)", grupo: "Resultado", fuerte: true },
   { clave: "ahorro", etiqueta: "Ahorro registrado (aportes − retiros)" },
   { clave: "sinFondo", etiqueta: "Dinero que no llegó a ningún fondo" },

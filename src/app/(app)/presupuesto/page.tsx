@@ -6,7 +6,7 @@ import { Campo, Encabezado, Mensajes, Panel, Seleccion, Vacio, claseBoton, clase
 import { cargarAnio } from "@/lib/cargas";
 import { contexto, leerTodo, mapaNombres } from "@/lib/datos";
 import { MESES, mesDe } from "@/lib/fechas";
-import { QUINCENAS, TIPOS_MOV, num, type ConceptoPresupuesto, type MontoPresupuesto } from "@/lib/tipos";
+import { QUINCENAS, TIPOS_MOV, esPagoTarjeta, num, type ConceptoPresupuesto, type MontoPresupuesto } from "@/lib/tipos";
 
 export default async function Presupuesto({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
@@ -43,7 +43,7 @@ export default async function Presupuesto({ searchParams }: { searchParams: Prom
     });
 
   const real = Array.from({ length: 12 }, () => 0);
-  for (const g of gastos) real[mesDe(g.fecha) - 1] += num(g.monto);
+  for (const g of gastos) if (!esPagoTarjeta(g)) real[mesDe(g.fecha) - 1] += num(g.monto);
   const mesActual = new Date().getMonth() + 1;
   const opcMeses = MESES.map((m, i) => ({ valor: String(i + 1), etiqueta: m }));
 

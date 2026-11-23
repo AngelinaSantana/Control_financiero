@@ -43,8 +43,14 @@ export interface Movimiento {
 
 export interface Gasto extends Movimiento {
   prestamo_id: string | null;
+  /** El gasto es un PAGO a esta tarjeta (transferencia: baja su saldo, no suma como gasto). */
   tarjeta_id: string | null;
+  /** La compra se hizo con esta tarjeta (consumo: es gasto y sube su saldo). */
+  pagado_con_tarjeta_id?: string | null;
 }
+
+/** Un pago a tarjeta es una transferencia: no cuenta en los gastos del mes. */
+export const esPagoTarjeta = (g: Pick<Gasto, "tarjeta_id">) => !!g.tarjeta_id;
 export type Ingreso = Movimiento;
 
 export interface Prestamo {
