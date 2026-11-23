@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { contexto, mensajeBase } from "@/lib/datos";
 import { sumarMeses } from "@/lib/fechas";
+import { conceptoCoincidente, esFijoPresupuestable } from "@/lib/presupuesto";
+import type { Gasto } from "@/lib/tipos";
 import { crearClienteServidor } from "@/lib/supabase/server";
 
 // ---------------------------------------------------------------------
@@ -39,28 +41,30 @@ function destino(fd: FormData, porDefecto = "/") {
   return v.startsWith("/") ? v : porDefecto;
 }
 
-function conParam(ruta: string, clave: string, valor: string) {
+function conParam(ruta: string, clave: string, valor: string, extra: Record<string, string> = {}) {
   const url = new URL(ruta, "http://x");
-  url.searchParams.delete("editar");
-  url.searchParams.delete("error");
-  url.searchParams.delete("ok");
+  for (const k of ["editar", "error", "ok", "sugerir", "nuevo"]) url.searchParams.delete(k);
   url.searchParams.set(clave, valor);
+  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
   return url.pathname + url.search;
 }
 
+type Resultado = string | void | { mensaje: string; params: Record<string, string> };
+
 /** Ejecuta la acción; ante error vuelve con ?error=, si no, con ?ok=. */
-async function ejecutar(fd: FormData, fn: () => Promise<string | void>) {
+async function ejecutar(fd: FormData, fn: () => Promise<Resultado>) {
   const volver = destino(fd);
-  let mensaje: string | void;
+  let resultado: Resultado;
   try {
-    mensaje = await fn();
+    resultado = await fn();
   } catch (e) {
     if (e && typeof e === "object" && "digest" in e) throw e; // redirect interno de Next
     const msg = e instanceof Error ? e.message : "Error inesperado";
     redirect(conParam(volver, "error", msg));
   }
   revalidatePath("/", "layout");
-  redirect(conParam(volver, "ok", mensaje || "Guardado"));
+  if (resultado && typeof resultado === "object") redirect(conParam(volver, "ok", resultado.mensaje, resultado.params));
+  redirect(conParam(volver, "ok", resultado || "Guardado"));
 }
 
 function revisar<T extends { error: { message: string } | null }>(r: T): T {
@@ -197,8 +201,21 @@ export async function guardarMovimiento(fd: FormData) {
       }
     }
     const id = opc(fd, "id");
-    revisar(id ? await supabase.from(tabla).update(fila).eq("id", id) : await supabase.from(tabla).insert(fila));
-    return tabla === "ingresos" ? "Ingreso guardado" : "Gasto guardado";
+    if (id) {
+      revisar(await supabase.from(tabla).update(fila).eq("id", id));
+      return tabla === "ingresos" ? "Ingreso guardado" : "Gasto guardado";
+    }
+    const { data: nuevo } = revisar(await supabase.from(tabla).insert(fila).select("id").single());
+    if (tabla === "ingresos") return "Ingreso guardado";
+
+    // Un gasto Fijo nuevo que no está en el presupuesto: sugerir agregarlo.
+    if (nuevo && esFijoPresupuestable(fila as Pick<Gasto, "tipo" | "prestamo_id" | "tarjeta_id">)) {
+      const { data: conceptos } = await supabase.from("presupuesto_conceptos").select("concepto");
+      if (!conceptoCoincidente(String(fila.concepto), conceptos ?? [])) {
+        return { mensaje: "Gasto guardado", params: { sugerir: nuevo.id } };
+      }
+    }
+    return "Gasto guardado";
   });
 }
 

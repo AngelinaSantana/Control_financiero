@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { BotonEliminar } from "@/components/BotonEliminar";
 import { FormMovimiento } from "@/components/FormMovimiento";
+import { AgregarAlPresupuesto } from "@/components/AgregarAlPresupuesto";
 import { PasarFijos } from "@/components/PasarFijos";
 import { Encabezado, Mensajes, Panel, Seleccion, SelectorMes, Vacio, claseBotonSec, claseInput, leerMes } from "@/components/ui";
 import { contexto, leerTodo, mapaNombres } from "@/lib/datos";
-import { MESES, formatoFecha, rangoMes } from "@/lib/fechas";
+import { MESES, anioDe, formatoFecha, mesDe, rangoMes } from "@/lib/fechas";
+import { conceptoCoincidente, esFijoPresupuestable } from "@/lib/presupuesto";
 import { dinero } from "@/lib/formato";
 import { esPagoTarjeta, num, type Gasto, type Ingreso, type Prestamo, type Tarjeta } from "@/lib/tipos";
 
@@ -37,6 +39,16 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
     leerTodo<Gasto | Ingreso>(supabase, tabla, (q) => q.eq("tipo", "Fijo").gte("fecha", desdeSig).lte("fecha", hastaSig), { columna: "fecha" }),
   ]);
 
+  // Sugerencia tras guardar un gasto Fijo que no está en el presupuesto
+  let sugerido: Gasto | null = null;
+  if (sp.sugerir && tabla === "gastos") {
+    const [{ data: g }, { data: conceptos }] = await Promise.all([
+      supabase.from("gastos").select("*").eq("id", sp.sugerir).maybeSingle(),
+      supabase.from("presupuesto_conceptos").select("concepto"),
+    ]);
+    if (g && esFijoPresupuestable(g as Gasto) && !conceptoCoincidente((g as Gasto).concepto, conceptos ?? [])) sugerido = g as Gasto;
+  }
+
   const editar = sp.editar
     ? ((await supabase.from(tabla).select("*").eq("id", sp.editar).maybeSingle()).data as Gasto | Ingreso | null)
     : null;
@@ -62,6 +74,22 @@ export default async function Movimientos({ searchParams }: { searchParams: Prom
         <SelectorMes ruta="/movimientos" anio={anio} mes={mes} extra={`&tipo=${tabla}`} />
       </Encabezado>
       <Mensajes error={sp.error} ok={sp.ok} />
+      {sugerido && (
+        <section className="mb-4 rounded-2xl border border-marca/30 bg-marca/5 p-4">
+          <p className="mb-1 text-sm font-semibold">“{sugerido.concepto}” es un gasto fijo que no está en tu presupuesto.</p>
+          <p className="mb-3 text-sm text-tenue">
+            Si se repite cada mes, agrégalo para que el presupuesto refleje lo que realmente necesitas y no aparezca como excedido.
+          </p>
+          <AgregarAlPresupuesto
+            item={{ ...sugerido, monto: num(sugerido.monto) }}
+            anio={anioDe(sugerido.fecha)}
+            desdeMes={mesDe(sugerido.fecha)}
+            categorias={categorias}
+            volver={volver}
+            cancelar={volver}
+          />
+        </section>
+      )}
 
       <div className="mb-4 inline-flex rounded-lg border border-borde bg-superficie p-1">
         {(["gastos", "ingresos"] as const).map((t) => (
