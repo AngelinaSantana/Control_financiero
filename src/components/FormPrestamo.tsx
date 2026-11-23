@@ -54,6 +54,11 @@ export function FormPrestamo({ volver, personas, p }: { volver: string; personas
       <Campo etiqueta="Fecha de la foto">
         <input type="date" name="fecha_referencia" defaultValue={p?.fecha_referencia ?? ""} className={claseInput} />
       </Campo>
+      <Campo etiqueta="Penalidad por pago anticipado (%)">
+        <input name="penalidad_pago_anticipado" inputMode="decimal" placeholder="0"
+          defaultValue={p && num(p.penalidad_pago_anticipado) ? +(num(p.penalidad_pago_anticipado) * 100).toFixed(2) : ""} className={claseInput} />
+      </Campo>
+      {p && num(p.penalidad_pago_anticipado) > 0 && <input type="hidden" name="tenia_penalidad" value="1" />}
       <Campo etiqueta="Estado">
         <Seleccion name="activo" valor={p && !p.activo ? "off" : "on"} opciones={[{ valor: "on", etiqueta: "Activo" }, { valor: "off", etiqueta: "Saldado / archivado" }]} />
       </Campo>

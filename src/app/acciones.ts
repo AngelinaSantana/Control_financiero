@@ -69,7 +69,7 @@ function revisar<T extends { error: { message: string } | null }>(r: T): T {
 }
 
 function traducirError(m: string) {
-  if (m.includes("pagado_con_tarjeta_id")) return mensajeBase(m);
+  if (m.includes("pagado_con_tarjeta_id") || m.includes("penalidad_pago_anticipado")) return mensajeBase(m);
   if (m.includes("violates foreign key") || m.includes("restrict")) return "No se puede borrar: está en uso.";
   if (m.includes("duplicate key")) return "Ya existe un registro con ese nombre.";
   if (m.includes("Invalid login credentials")) return "Correo o contraseña incorrectos.";
@@ -325,6 +325,11 @@ export async function guardarPrestamo(fd: FormData) {
       fecha_referencia: opc(fd, "fecha_referencia"),
       activo: fd.get("activo") !== "off",
     };
+    // Sólo se envía si se usa, para no romper bases sin la migración 0005.
+    const penalidad = pct(fd, "penalidad_pago_anticipado");
+    if (penalidad || fd.get("tenia_penalidad") === "1") {
+      (fila as Record<string, unknown>).penalidad_pago_anticipado = penalidad ?? 0;
+    }
     if (fila.saldo_referencia !== null && !fila.fecha_referencia) {
       throw new ErrorUsuario("Indica la fecha del saldo de referencia");
     }
