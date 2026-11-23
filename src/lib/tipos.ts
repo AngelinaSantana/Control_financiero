@@ -69,6 +69,8 @@ export interface Prestamo {
   saldo_referencia: Num | null;
   cuotas_pagadas_referencia: number;
   fecha_referencia: string | null;
+  /** Fracción que cobra el banco por abonar o saldar antes (migración 0005). */
+  penalidad_pago_anticipado?: Num;
   activo: boolean;
 }
 

@@ -16,6 +16,7 @@ Está basada en el libro `Control_Financiero_Familiar.xlsx` y reproduce sus hoja
 | Ahorros | **Ahorros**: fondos, aportes y retiros, meta del fondo de emergencia |
 | Resumen / Desviaciones | **Inicio** y **Reportes**: flujo neto, indicadores, planeado vs. real |
 | — (nuevo) | **Personales**: lo que te deben y lo que debes a otras personas |
+| — (nuevo) | **Análisis**: diagnóstico de préstamos y tarjetas, orden recomendado para abonar y simulador de estrategias |
 | — (nuevo) | **Importar**: sube el PDF del estado de cuenta; Claude extrae los movimientos y tú los revisas antes de registrarlos |
 
 ## Tecnología
@@ -45,7 +46,7 @@ scripts/importar_excel.py   importación de tu Excel
 ### 1. Crear la base de datos en Supabase
 1. Crea un proyecto gratis en [supabase.com](https://supabase.com).
 2. Ve a **SQL Editor**, pega el contenido de `supabase/migrations/0001_esquema.sql` y pulsa **Run**.
-   Si ya lo habías ejecutado antes de esta versión, ejecuta también, en orden, `0002_permisos.sql`, `0003_pagado_con_tarjeta.sql` y `0004_reglas_importacion.sql`. El 0002 da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
+   Si ya lo habías ejecutado antes de esta versión, ejecuta también, en orden, `0002_permisos.sql`, `0003_pagado_con_tarjeta.sql`, `0004_reglas_importacion.sql` y `0005_penalidad_prestamos.sql`. El 0002 da a la app permiso para leer y escribir las tablas (si falta, la app se queda en la pantalla de bienvenida).
 3. En **Authentication → Providers → Email**, deja activado Email. Si no quieres confirmar el correo al registrarte, desactiva "Confirm email".
 4. En **Project Settings → API** copia la *Project URL* y la *anon public key*.
 
@@ -99,6 +100,10 @@ En Supabase → Authentication → URL Configuration, pon la URL de Vercel como 
   un gasto marcado **"Pago A una tarjeta"** baja la deuda y es una transferencia: no se suma otra vez en los gastos (sí en el servicio de deuda). El interés estimado sale del saldo que queda después del pago programado.
 - **Resumen**: el servicio de deuda es la suma de los gastos en categorías que empiezan con "Deuda". La tasa de ahorro es aportes menos retiros, dividido entre los ingresos.
 - **Préstamos personales**: no cuentan como ingreso ni como gasto, para no inflar los ingresos reales.
+- **Análisis de deudas** (todo se calcula en la app, sin costo): costo real de cada deuda = tasa + seguros fijos repartidos sobre el saldo.
+  El orden recomendado combina: 1) bajar las tarjetas en sobregiro a su límite, 2) saldar ya lo que libera mucho flujo mensual
+  (pago ≥ 8 % del saldo) si alcanza el dinero, 3) el resto por costo real menos la penalidad por pago anticipado, con las deudas al 0 % al final.
+  El simulador usa interés mensual (tasa ÷ 12), compara con avalancha, bola de nieve y un orden propio, y puede reservar un colchón de 1 mes de gastos.
 
 ## Desarrollo
 ```bash

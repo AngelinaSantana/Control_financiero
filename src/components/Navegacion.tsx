@@ -10,6 +10,7 @@ const ENLACES = [
   { href: "/presupuesto", texto: "Presupuesto" },
   { href: "/prestamos", texto: "Préstamos" },
   { href: "/tarjetas", texto: "Tarjetas" },
+  { href: "/analisis", texto: "Análisis" },
   { href: "/ahorros", texto: "Ahorros" },
   { href: "/personales", texto: "Personales" },
   { href: "/reportes", texto: "Reportes" },

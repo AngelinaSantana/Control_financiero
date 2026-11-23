@@ -43,6 +43,9 @@ export function mensajeBase(m: string): string {
   if (/permission denied|42501/i.test(m)) {
     return "La base de datos no da permisos a la app. En Supabase → SQL Editor ejecuta supabase/migrations/0002_permisos.sql y vuelve a intentar.";
   }
+  if (/penalidad_pago_anticipado/i.test(m)) {
+    return "Falta actualizar la base de datos: en Supabase → SQL Editor ejecuta supabase/migrations/0005_penalidad_prestamos.sql.";
+  }
   if (/pagado_con_tarjeta_id/i.test(m)) {
     return "Falta actualizar la base de datos: en Supabase → SQL Editor ejecuta supabase/migrations/0003_pagado_con_tarjeta.sql.";
   }

@@ -87,6 +87,7 @@ create table public.prestamos (
   saldo_referencia          numeric(14,2),
   cuotas_pagadas_referencia int not null default 0,
   fecha_referencia          date,
+  penalidad_pago_anticipado numeric(6,4) not null default 0,  -- 0.03 = 3 % por abonar antes
   activo                    boolean not null default true,
   created_at                timestamptz not null default now()
 );
