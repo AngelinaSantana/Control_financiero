@@ -282,16 +282,18 @@ export default async function Presupuesto({ searchParams }: { searchParams: Prom
             )}
             <div className="col-span-2 flex flex-wrap items-end gap-3 md:col-span-4">
               <button className={claseBoton}>{editar ? "Guardar cambios" : "Agregar"}</button>
-              {editar && (
-                <>
-                  <Link href={volver} className={claseBotonSec}>Cancelar</Link>
-                  <BotonEliminar tabla="presupuesto_conceptos" id={editar.id} volver={volver} texto="Eliminar concepto" />
-                </>
-              )}
+              {editar && <Link href={volver} className={claseBotonSec}>Cancelar</Link>}
             </div>
             {!editar && <p className="col-span-2 text-xs text-tenue md:col-span-4">El monto se copia en cada mes desde el elegido hasta diciembre; luego puedes ajustarlo en la tabla.</p>}
             {editar && <p className="col-span-2 text-xs text-tenue md:col-span-4">Los montos de cada mes se cambian directamente en la tabla de arriba.</p>}
           </form>
+          {/* Fuera del formulario de editar: un formulario no puede ir dentro de otro (el botón no funcionaría). */}
+          {editar && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-borde pt-3">
+              <span className="text-xs text-tenue">Eliminar borra el concepto y sus montos de todos los meses. Tus gastos registrados no cambian.</span>
+              <BotonEliminar tabla="presupuesto_conceptos" id={editar.id} volver={volver} texto="Eliminar concepto" />
+            </div>
+          )}
         </section>
 
         <Panel titulo="Copiar un mes a otro">
