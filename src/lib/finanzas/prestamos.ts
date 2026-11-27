@@ -1,4 +1,4 @@
-import { diasEntre, sumarMeses } from "../fechas";
+import { diasEntre, hoyISO, sumarMeses } from "../fechas";
 import { num, type Prestamo } from "../tipos";
 
 /**
@@ -122,6 +122,7 @@ export function estadoPrestamo(
   pagos: { fecha: string; monto: number }[],
   abonos: { fecha: string; monto: number }[] = [],
   abonoMensual = 0,
+  hoy: string = hoyISO(),
 ): EstadoPrestamo {
   const inicio = puntoDePartida(p);
   const cuota = num(p.cuota_total);
@@ -134,7 +135,14 @@ export function estadoPrestamo(
   const pagadas = filas.filter((f) => f.pagada);
   const pendientes = filas.filter((f) => !f.pagada);
   const ultimaPagada = pagadas.at(-1);
-  const saldoActual = ultimaPagada ? ultimaPagada.saldoFinal : inicio.saldo;
+  // Los abonos extra ya hechos (hasta hoy) cuentan aunque la cuota de ese período
+  // aún no se haya pagado: en la tabla se aplican dentro de esa cuota, pero el
+  // saldo de hoy ya debe reflejarlos.
+  const desdeUltimaPagada = ultimaPagada?.fecha ?? inicio.fechaPrevia;
+  const abonosYaHechos = abonos
+    .filter((a) => (!inicio.fechaFoto || a.fecha > inicio.fechaFoto) && a.fecha > desdeUltimaPagada && a.fecha <= hoy)
+    .reduce((s, a) => s + a.monto, 0);
+  const saldoActual = Math.max((ultimaPagada ? ultimaPagada.saldoFinal : inicio.saldo) - abonosYaHechos, 0);
 
   const alertas: string[] = [];
   const ultima = filas.at(-1);

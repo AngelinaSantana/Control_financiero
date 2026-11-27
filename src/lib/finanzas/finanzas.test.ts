@@ -150,3 +150,25 @@ describe("resumen y desviaciones", () => {
     expect(viv.real[6]).toBe(20000);
   });
 });
+
+describe("abonos extra realizados", () => {
+  const avance: Prestamo = {
+    ...vehiculo, id: "avance", acreedor: "APAP", descripcion: "Avance a sueldo", fecha_inicio: "2026-05-18",
+    fecha_primera_cuota: "2026-06-15", monto_original: 220000, tasa_anual: 0, base_dias: 360, cuotas_totales: 36,
+    cuota_total: 2291.67, seguro_cuota: 0, saldo_referencia: 208541.65, cuotas_pagadas_referencia: 5, fecha_referencia: "2026-10-31",
+  };
+  it("un abono ya hecho baja el saldo de hoy aunque su cuota aún no se pague", () => {
+    const e = estadoPrestamo(avance, [], [{ fecha: "2026-11-20", monto: 55000 }], 0, "2026-11-27");
+    expect(e.saldoActual).toBe(153541.65);
+  });
+  it("un abono con fecha futura todavía no cuenta en el saldo de hoy", () => {
+    const e = estadoPrestamo(avance, [], [{ fecha: "2026-12-20", monto: 55000 }], 0, "2026-11-27");
+    expect(e.saldoActual).toBe(208541.65);
+  });
+  it("con interés: el abono baja el saldo y acorta el plazo", () => {
+    const sin = estadoPrestamo(qik, [], [], 0, "2026-11-27");
+    const con = estadoPrestamo(qik, [], [{ fecha: "2026-11-10", monto: 5000 }], 0, "2026-11-27");
+    expect(con.saldoActual).toBeCloseTo(sin.saldoActual - 5000, 2);
+    expect(con.cuotasRestantes).toBeLessThanOrEqual(sin.cuotasRestantes);
+  });
+});
