@@ -144,6 +144,8 @@ export interface MesSimulado {
   extraAplicado: Record<string, number>;
   alFondo: number;
   saldadas: string[];
+  /** Saldo de cada deuda al terminar el mes. */
+  saldos: Record<string, number>;
 }
 
 export interface ResultadoSimulacion {
@@ -236,7 +238,7 @@ export function simular(deudasIniciales: Deuda[], op: OpcionesSimulacion): Resul
     totalPagado += pagado;
     meses.push({
       mes, saldoTotal: r2(deudas.reduce((s, d) => s + d.saldo, 0)), pagado: r2(pagado), extraAplicado,
-      alFondo: r2(alFondo), saldadas,
+      alFondo: r2(alFondo), saldadas, saldos: Object.fromEntries(deudas.map((d) => [d.id, r2(d.saldo)])),
     });
   }
 
@@ -249,6 +251,86 @@ export function simular(deudasIniciales: Deuda[], op: OpcionesSimulacion): Resul
     saldadoEn,
     fondoFinal: r2(fondo),
     noAlcanza,
+  };
+}
+
+/** Lo que hace falta para dejar una deuda en cero este mes, después de su pago normal. */
+export function montoParaSaldar(d: Deuda): number {
+  if (d.saldo <= 0.005) return 0;
+  const despuesDelPago = d.saldo + d.saldo * (d.tasaAnual / 12) + d.seguroMensual - pagoExigible(d);
+  return r2(Math.max(despuesDelPago, 0) * (1 + d.penalidad));
+}
+
+export interface AccionAbono {
+  id: string;
+  nombre: string;
+  tipo: Deuda["tipo"];
+  aplicado: number;          // dinero del abono que va a esta deuda
+  saldoAntes: number;        // saldo hoy
+  saldoDespues: number;      // saldo después del pago normal + el abono
+  saldada: boolean;
+  salioDeSobregiro: boolean;
+  libera: number;            // pago mensual que deja de existir si se salda
+}
+
+export interface PlanAbono {
+  monto: number;
+  acciones: AccionAbono[];
+  sobrante: number;          // si alcanza para todo
+  liberaTotal: number;       // dinero mensual que queda libre
+  /** Deudas que este monto alcanza para saldar por completo, cada una por separado. */
+  alcanzaPara: { id: string; nombre: string; monto: number; libera: number; enElPlan: boolean }[];
+  /** Si no alcanza para saldar ninguna: la más cercana. */
+  masCercana: { id: string; nombre: string; falta: number } | null;
+  ahorroCostos: number;      // intereses y seguros que te ahorras con este abono
+  mesesMenos: number | null; // cuánto antes terminas
+}
+
+/**
+ * ¿Qué hago con este dinero? Reparte el monto según la estrategia (como abono
+ * único este mes) y explica a dónde va, qué se salda, qué se libera y qué ganas.
+ */
+export function planDeAbono(deudas: Deuda[], monto: number, op: Omit<OpcionesSimulacion, "abonoInicial">): PlanAbono {
+  const base = { ...op, fondo: undefined };
+  const mes1 = simular(deudas, { ...base, extraMensual: 0, abonoInicial: monto, maxMeses: 1 }).meses[0];
+  const acciones: AccionAbono[] = [];
+  for (const d of deudas) {
+    const aplicado = mes1?.extraAplicado[d.id] ?? 0;
+    if (aplicado <= 0) continue;
+    const saldoDespues = mes1.saldos[d.id] ?? 0;
+    acciones.push({
+      id: d.id, nombre: d.nombre, tipo: d.tipo, aplicado, saldoAntes: r2(d.saldo), saldoDespues,
+      saldada: saldoDespues <= 0.005,
+      salioDeSobregiro: sobregiro(d) > 0 && d.limite !== null && saldoDespues <= d.limite,
+      libera: saldoDespues <= 0.005 ? r2(pagoBase(d)) : 0,
+    });
+  }
+  // Orden en que se aplicó el dinero
+  const orden = Object.keys(mes1?.extraAplicado ?? {});
+  acciones.sort((a, b) => orden.indexOf(a.id) - orden.indexOf(b.id));
+
+  const usado = acciones.reduce((s, a) => s + a.aplicado, 0);
+  const enElPlan = new Set(acciones.filter((a) => a.saldada).map((a) => a.id));
+  const vivas = deudas.filter((d) => d.saldo > 0.005);
+  const alcanzaPara = vivas
+    .map((d) => ({ id: d.id, nombre: d.nombre, monto: montoParaSaldar(d), libera: r2(pagoBase(d)), enElPlan: enElPlan.has(d.id) }))
+    .filter((x) => x.monto <= monto + 0.005)
+    .sort((a, b) => b.libera / Math.max(b.monto, 1) - a.libera / Math.max(a.monto, 1));
+  const cercana = alcanzaPara.length ? null : vivas
+    .map((d) => ({ id: d.id, nombre: d.nombre, falta: r2(montoParaSaldar(d) - monto) }))
+    .sort((a, b) => a.falta - b.falta)[0] ?? null;
+
+  const sin = simular(deudas, { ...op, abonoInicial: 0 });
+  const con = simular(deudas, { ...op, abonoInicial: monto });
+  return {
+    monto,
+    acciones,
+    sobrante: r2(Math.max(monto - usado, 0)),
+    liberaTotal: r2(acciones.reduce((s, a) => s + a.libera, 0)),
+    alcanzaPara,
+    masCercana: cercana,
+    ahorroCostos: sin.mesLibre === null && con.mesLibre === null ? 0 : r2(sin.totalCostos - con.totalCostos),
+    mesesMenos: sin.mesLibre !== null && con.mesLibre !== null ? sin.mesLibre - con.mesLibre : null,
   };
 }
 

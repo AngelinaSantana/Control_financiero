@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  costoEfectivoAnual, diagnosticar, ordenRecomendado, simular, simularActual, simularConsolidacion, type Deuda,
+  costoEfectivoAnual, diagnosticar, montoParaSaldar, ordenRecomendado, planDeAbono, simular, simularActual,
+  simularConsolidacion, type Deuda,
 } from "./analisis";
 
 const d = (x: Partial<Deuda> & { id: string }): Deuda => ({
@@ -117,5 +118,48 @@ describe("diagnóstico y consolidación", () => {
   it("una tarjeta sin pago mínimo registrado usa un pago estimado", () => {
     const t = d({ id: "acap", tipo: "tarjeta", saldo: 68753, tasaAnual: 0.6, pagoMinimo: 0, limite: 68000 });
     expect(diagnosticar([t], 80000, 0.3).pagosMinimos).toBeGreaterThan(4000);
+  });
+});
+
+describe("plan de abono: qué hacer con un dinero extra", () => {
+  const deudas = [
+    d({ id: "br", nombre: "Banreservas", tipo: "tarjeta", saldo: 36638, tasaAnual: 0.6, pagoMinimo: 1988, limite: 31000 }),
+    d({ id: "ultra", nombre: "Ultracrédito", saldo: 8983, tasaAnual: 0.265, pagoMinimo: 1094 }),
+    d({ id: "pm", nombre: "Pricesmart Pesos", tipo: "tarjeta", saldo: 6770, tasaAnual: 0.6, pagoMinimo: 1829, limite: 6095 }),
+    d({ id: "isi", nombre: "ISI", tipo: "tarjeta", saldo: 47896, tasaAnual: 0.4, pagoMinimo: 5000, limite: 52000 }),
+    d({ id: "avance", nombre: "Avance a sueldo", saldo: 208541, tasaAnual: 0, pagoMinimo: 2292 }),
+  ];
+  const op = { estrategia: "recomendada" as const, extraMensual: 0, reinvertirLiberado: true };
+  const plan = planDeAbono(deudas, 55000, op);
+  const accion = (id: string) => plan.acciones.find((a) => a.id === id);
+
+  it("reparte todo el dinero y dice qué deudas quedan saldadas", () => {
+    expect(plan.acciones.reduce((s, a) => s + a.aplicado, 0)).toBeCloseTo(55000, 0);
+    expect(accion("pm")?.saldada).toBe(true);
+    expect(accion("ultra")?.saldada).toBe(true);
+    expect(plan.liberaTotal).toBeGreaterThan(2900); // 1,829 + 1,094 al mes
+  });
+  it("saca primero las tarjetas del sobregiro", () => {
+    expect(plan.acciones[0].salioDeSobregiro || plan.acciones[0].saldada).toBe(true);
+    expect(accion("br")?.salioDeSobregiro).toBe(true);
+  });
+  it("lista todas las deudas que alcanzaría para saldar completas", () => {
+    const ids = plan.alcanzaPara.map((x) => x.id);
+    expect(ids).toEqual(expect.arrayContaining(["pm", "ultra", "br", "isi"]));
+    expect(ids).not.toContain("avance");
+  });
+  it("calcula cuánto ahorras y cuánto antes terminas", () => {
+    expect(plan.ahorroCostos).toBeGreaterThan(0);
+    expect(plan.mesesMenos).toBeGreaterThan(0);
+  });
+  it("si no alcanza para saldar ninguna, dice cuál es la más cercana y cuánto falta", () => {
+    const poco = planDeAbono(deudas, 3000, op);
+    expect(poco.alcanzaPara).toHaveLength(0);
+    expect(poco.masCercana?.id).toBe("pm");
+    expect(poco.masCercana!.falta).toBeGreaterThan(0);
+  });
+  it("monto para saldar descuenta el pago normal del mes", () => {
+    const x = d({ id: "x", saldo: 10000, tasaAnual: 0, pagoMinimo: 1000 });
+    expect(montoParaSaldar(x)).toBe(9000);
   });
 });
