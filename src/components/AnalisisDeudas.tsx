@@ -5,7 +5,8 @@ import { GraficaDeuda, type PuntoDeuda } from "@/components/GraficaDeuda";
 import { MESES_CORTOS, partes, sumarMeses } from "@/lib/fechas";
 import {
   NOMBRES_ESTRATEGIA, costoEfectivoAnual, costoMensual, diagnosticar, liberacionPorPeso, ordenRecomendado,
-  pagoExigible, simular, simularActual, simularConsolidacion, sobregiro, type Deuda, type Estrategia, type ResultadoSimulacion,
+  pagoExigible, planDeAbono, simular, simularActual, simularConsolidacion, sobregiro,
+  type Deuda, type Estrategia, type PlanAbono, type ResultadoSimulacion,
 } from "@/lib/finanzas/analisis";
 
 interface Props {
@@ -59,6 +60,20 @@ export function AnalisisDeudas({ deudas, ingresoMensual, limiteDeuda, fondo, hoy
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deudas, extra, abono, reinvertir, reservarFondo, ordenManual]);
   const plan = resultados[estrategia];
+
+  // ¿Qué hago con este dinero? (abono único, y el extra del primer mes)
+  const opPlan = { estrategia, extraMensual: Math.max(extra, 0), reinvertirLiberado: reinvertir, ordenManual };
+  const planUnico = useMemo(
+    () => (abono > 0 ? planDeAbono(deudas, abono, opPlan) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deudas, abono, extra, estrategia, reinvertir, ordenManual],
+  );
+  const planPrimerMes = useMemo(
+    () => (extra > 0 ? planDeAbono(deudas, extra, { ...opPlan, extraMensual: 0 }) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deudas, extra, estrategia, reinvertir, ordenManual],
+  );
+  const ordenSaldadas = Object.entries(plan.saldadoEn).filter(([, m]) => m > 0).sort((a, b) => a[1] - b[1]);
   const mejor = ESTRATEGIAS.filter((e) => resultados[e].mesLibre !== null)
     .sort((a, b) => resultados[a].totalCostos - resultados[b].totalCostos)[0];
 
@@ -170,6 +185,44 @@ export function AnalisisDeudas({ deudas, ingresoMensual, limiteDeuda, fondo, hoy
           </ol>
         )}
       </section>
+
+      {/* ---------------- Qué hacer con el dinero ---------------- */}
+      {planUnico && (
+        <QueHacer
+          titulo={`Qué hacer con tus ${rd(abono)}`}
+          subtitulo={`Según la estrategia ${NOMBRES_ESTRATEGIA[estrategia]}, en este orden:`}
+          plan={planUnico}
+          rd={rd}
+          duracion={duracion}
+          mostrarAlternativas
+        />
+      )}
+      {planPrimerMes && (
+        <QueHacer
+          titulo={`Tus ${rd(extra)} extra de este mes`}
+          subtitulo="Este mes van aquí; los meses siguientes el plan sigue con la próxima deuda."
+          plan={planPrimerMes}
+          rd={rd}
+          duracion={duracion}
+          mostrarAlternativas={!planUnico}
+        />
+      )}
+      {(planUnico || planPrimerMes) && ordenSaldadas.length > 0 && (
+        <section className={tarjeta}>
+          <h2 className="mb-2 text-base font-semibold">Orden en que quedarías libre de cada deuda</h2>
+          <ol className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+            {ordenSaldadas.map(([id, m], i) => {
+              const d = deudas.find((x) => x.id === id)!;
+              return (
+                <li key={id} className="flex items-baseline justify-between gap-2 border-b border-borde py-1.5">
+                  <span><span className="mr-2 text-tenue">{i + 1}.</span>{d.nombre}</span>
+                  <span className="shrink-0 tabular-nums text-tenue">{etiquetaMes(m)}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       {/* ---------------- Resultado ---------------- */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -312,5 +365,88 @@ function Dato({ etiqueta, valor, detalle, malo, bueno }: { etiqueta: string; val
       <div className={`mt-1 break-words text-lg font-bold tabular-nums sm:text-xl ${malo ? "text-malo" : bueno ? "text-bueno" : ""}`}>{valor}</div>
       {detalle && <div className="mt-1 text-xs text-tenue">{detalle}</div>}
     </div>
+  );
+}
+
+/** Desglose de un monto: a qué deudas va, qué se salda, qué se libera y qué otras opciones hay. */
+function QueHacer({ titulo, subtitulo, plan, rd, duracion, mostrarAlternativas }: {
+  titulo: string;
+  subtitulo: string;
+  plan: PlanAbono;
+  rd: (n: number) => string;
+  duracion: (n: number | null) => string;
+  mostrarAlternativas: boolean;
+}) {
+  const saldadas = plan.acciones.filter((a) => a.saldada);
+  return (
+    <section className="rounded-2xl border border-marca/30 bg-marca/5 p-4 sm:p-5">
+      <h2 className="text-base font-semibold">{titulo}</h2>
+      <p className="mb-3 text-sm text-tenue">{subtitulo}</p>
+
+      <ol className="space-y-2">
+        {plan.acciones.map((a, i) => (
+          <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-superficie p-3 text-sm shadow-sm">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-marca text-xs font-bold text-white">{i + 1}</span>
+            <span className="min-w-0 flex-1">
+              <span className="font-semibold">
+                {a.saldada ? "Salda" : a.salioDeSobregiro ? "Saca del sobregiro" : "Abona a"} {a.nombre}
+              </span>
+              <span className="block text-xs text-tenue">
+                {a.saldada
+                  ? `Queda en cero${a.libera ? ` · liberas ${rd(a.libera)} al mes` : ""}`
+                  : `Saldo: ${rd(a.saldoAntes)} → ${rd(a.saldoDespues)}${a.salioDeSobregiro ? " · queda dentro de su límite" : ""}`}
+              </span>
+            </span>
+            <span className="shrink-0 text-base font-bold tabular-nums">{rd(a.aplicado)}</span>
+            {a.saldada && <span className="shrink-0 rounded-full bg-bueno/10 px-2 py-0.5 text-xs font-semibold text-bueno">Saldada</span>}
+          </li>
+        ))}
+      </ol>
+      {plan.sobrante > 0 && <p className="mt-2 text-sm text-bueno">Te sobran {rd(plan.sobrante)}: alcanza para saldar todas tus deudas.</p>}
+
+      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+        <div className="rounded-xl bg-superficie p-3">
+          <div className="text-xs text-tenue">Deudas saldadas</div>
+          <div className="font-semibold">{saldadas.length ? saldadas.length : "Ninguna completa"}</div>
+        </div>
+        <div className="rounded-xl bg-superficie p-3">
+          <div className="text-xs text-tenue">Dinero que liberas cada mes</div>
+          <div className="font-semibold text-bueno">{rd(plan.liberaTotal)}</div>
+        </div>
+        <div className="rounded-xl bg-superficie p-3">
+          <div className="text-xs text-tenue">Lo que ganas</div>
+          <div className="font-semibold">
+            {plan.ahorroCostos > 0 ? `${rd(plan.ahorroCostos)} menos en intereses` : "—"}
+            {plan.mesesMenos ? <span className="block text-xs font-normal text-tenue">terminas {duracion(plan.mesesMenos)} antes</span> : null}
+          </div>
+        </div>
+      </div>
+
+      {mostrarAlternativas && (
+        <div className="mt-3 rounded-xl bg-superficie p-3 text-sm">
+          {plan.alcanzaPara.length > 0 ? (
+            <>
+              <div className="mb-1 font-semibold">Con este dinero te alcanza para saldar completa cualquiera de estas:</div>
+              <ul className="divide-y divide-borde">
+                {plan.alcanzaPara.map((x) => (
+                  <li key={x.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+                    <span>
+                      {x.nombre}
+                      {x.enElPlan && <span className="ml-2 text-xs font-semibold text-bueno">✓ incluida arriba</span>}
+                    </span>
+                    <span className="tabular-nums text-tenue">
+                      necesitas {rd(x.monto)}{x.libera ? ` · libera ${rd(x.libera)}/mes` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-tenue">Ordenadas por cuánto dinero mensual liberas por cada peso. El plan de arriba combina las que más te convienen.</p>
+            </>
+          ) : plan.masCercana ? (
+            <p>No alcanza para saldar ninguna deuda completa. La más cercana es <strong>{plan.masCercana.nombre}</strong>: te faltan {rd(plan.masCercana.falta)}.</p>
+          ) : null}
+        </div>
+      )}
+    </section>
   );
 }
