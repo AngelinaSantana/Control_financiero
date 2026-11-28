@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { GraficaDeuda, type PuntoDeuda } from "@/components/GraficaDeuda";
 import { MESES_CORTOS, partes, sumarMeses } from "@/lib/fechas";
 import {
-  NOMBRES_ESTRATEGIA, costoEfectivoAnual, costoMensual, diagnosticar, liberacionPorPeso, ordenRecomendado,
+  NOMBRES_ESTRATEGIA, NOMBRES_PASO, costoEfectivoAnual, costoMensual, diagnosticar, liberacionPorPeso, ordenRecomendado,
   pagoExigible, planDeAbono, simular, simularActual, simularConsolidacion, sobregiro,
   type Deuda, type Estrategia, type PlanAbono, type ResultadoSimulacion,
 } from "@/lib/finanzas/analisis";
@@ -30,7 +30,7 @@ export function AnalisisDeudas({ deudas, ingresoMensual, limiteDeuda, fondo, hoy
   const [reinvertir, setReinvertir] = useState(true);
   const fondoIncompleto = fondo.meta > 0 && fondo.saldo < fondo.meta;
   const [reservarFondo, setReservarFondo] = useState(fondoIncompleto);
-  const [ordenManual, setOrdenManual] = useState<string[]>(() => ordenRecomendado(deudas, 0).map((p) => p.id));
+  const [ordenManual, setOrdenManual] = useState<string[]>(() => ordenRecomendado(deudas, 0, { inicioDeMes: true }).map((p) => p.id));
   const [selConsol, setSelConsol] = useState<string[]>(() => deudas.filter((d) => d.tipo === "tarjeta" && d.tasaAnual >= 0.4).map((d) => d.id));
   const [tasaConsol, setTasaConsol] = useState(24);
   const [plazoConsol, setPlazoConsol] = useState(36);
@@ -45,7 +45,7 @@ export function AnalisisDeudas({ deudas, ingresoMensual, limiteDeuda, fondo, hoy
   };
 
   const dx = useMemo(() => diagnosticar(deudas, ingresoMensual, limiteDeuda), [deudas, ingresoMensual, limiteDeuda]);
-  const prioridades = useMemo(() => ordenRecomendado(deudas, extra + abono), [deudas, extra, abono]);
+  const prioridades = useMemo(() => ordenRecomendado(deudas, extra + abono, { inicioDeMes: true }), [deudas, extra, abono]);
   const actual = useMemo(() => simularActual(deudas), [deudas]);
 
   const opciones = (e: Estrategia) => ({
@@ -264,7 +264,21 @@ export function AnalisisDeudas({ deudas, ingresoMensual, limiteDeuda, fondo, hoy
       {/* ---------------- Prioridades ---------------- */}
       <section className={tarjeta}>
         <h2 className="mb-1 text-base font-semibold">Orden recomendado y por qué</h2>
-        <p className="mb-3 text-xs text-tenue">Combina sobregiros, dinero mensual que liberas al saldar, costo real (tasa + seguros), penalidades y deudas sin interés.</p>
+        <p className="mb-2 text-xs text-tenue">El orden cambia con el monto que escribas arriba: con más dinero, más deudas se pueden saldar en el paso 2.</p>
+        <details className="mb-3 rounded-xl bg-fondo p-3 text-sm">
+          <summary className="cursor-pointer font-semibold text-marca">¿Cómo decide la estrategia Recomendada?</summary>
+          <p className="mt-2 text-tenue">Cada mes se pagan primero las cuotas y mínimos normales de todas las deudas. El dinero extra se reparte en este orden:</p>
+          <ol className="mt-2 list-decimal space-y-2 pl-5">
+            <li><strong>Sacar las tarjetas del sobregiro.</strong> A cada tarjeta por encima de su límite se le abona solo lo necesario para bajarla al límite,
+              porque el sobregiro cobra cargos extra y daña tu historial. Primero la de mayor tasa; si empatan, la de sobregiro más pequeño. Después compite como las demás.</li>
+            <li><strong>Saldar lo que libera mucho dinero cada mes.</strong> Si con lo que queda alcanza para dejar en cero una deuda cuyo pago mensual es al menos el 8 % de lo que debes,
+              se salda: esa cuota desaparece y ese dinero se va solo a la siguiente deuda (si la opción de sumar lo liberado está marcada).</li>
+            <li><strong>El resto, por costo real:</strong> la tasa más los seguros y cargos fijos (el vehículo al 11.4 % con su seguro cuesta más de 16 %),
+              menos la penalidad por pago anticipado si el banco la cobra.</li>
+            <li><strong>Al final, las deudas sin interés</strong>, que conviene pagar normal.</li>
+          </ol>
+          <p className="mt-2 text-xs text-tenue">Si prefieres guiarte solo por la tasa, elige Avalancha; la ★ en la comparación marca la que menos intereses paga con tus números.</p>
+        </details>
         <div className="desplazable">
           <table className="tabla min-w-[900px]">
             <thead><tr><th className="num">#</th><th>Deuda</th><th className="num">Saldo</th><th className="num">Tasa</th><th className="num">Costo real</th><th className="num">Te cuesta / mes</th><th className="num">Pago / mes</th><th>Se salda (plan)</th><th>Por qué</th></tr></thead>
@@ -282,7 +296,13 @@ export function AnalisisDeudas({ deudas, ingresoMensual, limiteDeuda, fondo, hoy
                     <td className="num">{rd(costoMensual(d))}</td>
                     <td className="num">{rd(pagoExigible(d))}<div className="text-xs text-tenue">libera {pct(liberacionPorPeso(d))} del saldo</div></td>
                     <td className="whitespace-nowrap">{mes ? etiquetaMes(mes) : "—"}</td>
-                    <td className="text-sm">{p.motivo}</td>
+                    <td className="text-sm">
+                      <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        p.paso === 1 ? "bg-malo/10 text-malo" : p.paso === 2 ? "bg-bueno/10 text-bueno" : p.paso === 3 ? "bg-marca/10 text-marca" : "bg-fondo text-tenue"}`}>
+                        {NOMBRES_PASO[p.paso]}
+                      </span>
+                      <span className="block">{p.motivo}</span>
+                    </td>
                   </tr>
                 );
               })}

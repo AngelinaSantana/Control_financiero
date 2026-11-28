@@ -59,18 +59,30 @@ describe("orden recomendado (más que avalancha o bola de nieve)", () => {
     d({ id: "banreservas", tipo: "tarjeta", saldo: 36638, tasaAnual: 0.6, pagoMinimo: 1988, limite: 31000 }),
     d({ id: "credimas", saldo: 23696, tasaAnual: 0.3, pagoMinimo: 4514, penalidad: 0.05 }),
   ];
-  const orden = ordenRecomendado(deudas, 15000);
+  const orden = ordenRecomendado(deudas, 15000, { inicioDeMes: true });
   const puesto = (id: string) => orden.find((p) => p.id === id)!.puesto;
   it("primero la tarjeta en sobregiro", () => {
     expect(orden[0].id).toBe("banreservas");
     expect(orden[0].motivo).toContain("sobregiro");
   });
-  it("luego lo que se puede saldar ya y libera mucho flujo (QIK libera RD$5,853 con ~RD$11k)", () => {
+  it("luego lo que se puede saldar ya y libera mucho flujo (QIK libera RD$5,853 con ~RD$5.6k tras su cuota)", () => {
     expect(puesto("qik")).toBe(2);
-    expect(orden[1].motivo).toContain("libera");
+    expect(orden[1].paso).toBe(2);
+    expect(orden[1].motivo).toContain("liberas");
+  });
+  it("el dinero que se usa en sobregiros no se cuenta dos veces para saldar otras", () => {
+    // Con RD$6,000: RD$5,638 van al sobregiro de Banreservas; ya no alcanza para saldar QIK (~RD$5,600)
+    const poco = ordenRecomendado(deudas, 6000, { inicioDeMes: true });
+    expect(poco.find((p) => p.id === "qik")!.paso).toBe(3);
+  });
+  it("explica que la tarjeta en sobregiro solo se baja a su límite y luego compite por costo", () => {
+    expect(orden[0].paso).toBe(1);
+    expect(orden[0].motivo).toContain("límite");
+    expect(orden[0].motivo).toContain("costo real");
   });
   it("la deuda al 0 % va al final", () => {
     expect(orden.at(-1)!.id).toBe("avance");
+    expect(orden.at(-1)!.paso).toBe(4);
   });
   it("la penalidad por pago anticipado baja la prioridad", () => {
     expect(puesto("isi")).toBeLessThan(puesto("credimas"));
@@ -161,5 +173,34 @@ describe("plan de abono: qué hacer con un dinero extra", () => {
   it("monto para saldar descuenta el pago normal del mes", () => {
     const x = d({ id: "x", saldo: 10000, tasaAnual: 0, pagoMinimo: 1000 });
     expect(montoParaSaldar(x)).toBe(9000);
+  });
+});
+
+describe("la tabla del orden y el panel 'Qué hacer' siempre coinciden", () => {
+  const deudas = [
+    d({ id: "acap", tipo: "tarjeta", saldo: 68753, tasaAnual: 0.6, pagoMinimo: 4125, limite: 68000 }),
+    d({ id: "bscus", tipo: "tarjeta", saldo: 26191, tasaAnual: 0.6, pagoMinimo: 3048, limite: 24380 }),
+    d({ id: "br", tipo: "tarjeta", saldo: 36639, tasaAnual: 0.6, pagoMinimo: 1988, limite: 31000 }),
+    d({ id: "bscrd", tipo: "tarjeta", saldo: 48251, tasaAnual: 0.6, pagoMinimo: 5000, limite: 28000 }),
+    d({ id: "pm", tipo: "tarjeta", saldo: 6770, tasaAnual: 0.6, pagoMinimo: 1829, limite: 6095 }),
+    d({ id: "qik", saldo: 11241, tasaAnual: 0.2445, pagoMinimo: 5854, seguroMensual: 174 }),
+    d({ id: "credimas", saldo: 23697, tasaAnual: 0.3, pagoMinimo: 4514, penalidad: 0.03 }),
+    d({ id: "ultra", saldo: 9740, tasaAnual: 0.265, pagoMinimo: 1094 }),
+    d({ id: "isi", tipo: "tarjeta", saldo: 47896, tasaAnual: 0.4, pagoMinimo: 5000, limite: 52000 }),
+    d({ id: "avance", saldo: 208542, tasaAnual: 0, pagoMinimo: 2292 }),
+  ];
+  const op = { estrategia: "recomendada" as const, extraMensual: 0, reinvertirLiberado: true };
+  it.each([3000, 15000, 30000, 55000, 120000])("con RD$%i", (monto) => {
+    const tabla = ordenRecomendado(deudas, monto, { inicioDeMes: true });
+    const plan = planDeAbono(deudas, monto, op);
+    // Todo lo que la tabla marca "Saldar ya" queda saldado en el plan (con dinero de sobra,
+    // el plan puede saldar además otras deudas por costo real, en el paso 3)
+    const saldadasPlan = new Set(plan.acciones.filter((a) => a.saldada).map((a) => a.id));
+    for (const p of tabla.filter((x) => x.paso === 2)) expect(saldadasPlan.has(p.id)).toBe(true);
+    // y el dinero va primero a las mismas deudas, en el mismo orden
+    const ordenPlan = plan.acciones.map((a) => a.id);
+    expect(tabla.slice(0, ordenPlan.length).map((p) => p.id).filter((id) => ordenPlan.includes(id))).toEqual(
+      ordenPlan.filter((id) => tabla.slice(0, ordenPlan.length).some((p) => p.id === id)),
+    );
   });
 });

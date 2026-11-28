@@ -168,17 +168,6 @@ export function estadoPrestamo(
   };
 }
 
-/** Orden sugerido para pagar: avalancha (mayor tasa primero) y bola de nieve (menor saldo primero). */
-export function prioridades(estados: EstadoPrestamo[]) {
-  const vivos = estados.filter((e) => e.saldoActual > 0.005);
-  const avalancha = [...vivos].sort((a, b) => num(b.prestamo.tasa_anual) - num(a.prestamo.tasa_anual));
-  const bolaDeNieve = [...vivos].sort((a, b) => a.saldoActual - b.saldoActual);
-  return {
-    avalancha: new Map(avalancha.map((e, i) => [e.prestamo.id, i + 1])),
-    bolaDeNieve: new Map(bolaDeNieve.map((e, i) => [e.prestamo.id, i + 1])),
-  };
-}
-
 export interface MesCalendario {
   clave: string; // YYYY-MM
   total: number;

@@ -1,9 +1,8 @@
 import { AnalisisDeudas } from "@/components/AnalisisDeudas";
 import { Encabezado } from "@/components/ui";
-import { cargarAnio, cargarDeudas } from "@/lib/cargas";
+import { cargarAnio, cargarDeudas, construirDeudas } from "@/lib/cargas";
 import { contexto, leerTodo } from "@/lib/datos";
 import { hoyISO } from "@/lib/fechas";
-import type { Deuda } from "@/lib/finanzas/analisis";
 import { resumenAnual, saldosAhorro } from "@/lib/finanzas/resumen";
 import { num, type FondoAhorro, type MovAhorro } from "@/lib/tipos";
 
@@ -21,34 +20,7 @@ export default async function Analisis() {
     leerTodo<MovAhorro>(supabase, "ahorro_movimientos"),
   ]);
 
-  const deudas: Deuda[] = [
-    ...estadosPrestamos
-      .filter((e) => e.prestamo.activo && e.saldoActual > 0.5)
-      .map((e) => ({
-        id: e.prestamo.id,
-        nombre: `${e.prestamo.acreedor} – ${e.prestamo.descripcion}`,
-        tipo: "prestamo" as const,
-        saldo: e.saldoActual,
-        tasaAnual: num(e.prestamo.tasa_anual),
-        pagoMinimo: num(e.prestamo.cuota_total),
-        seguroMensual: num(e.prestamo.seguro_cuota),
-        limite: null,
-        penalidad: num(e.prestamo.penalidad_pago_anticipado),
-      })),
-    ...estadosTarjetas
-      .filter((e) => e.tarjeta.activa && e.saldo > 0.5)
-      .map((e) => ({
-        id: e.tarjeta.id,
-        nombre: e.tarjeta.nombre,
-        tipo: "tarjeta" as const,
-        saldo: e.saldo * e.aRD,
-        tasaAnual: num(e.tarjeta.tasa_anual),
-        pagoMinimo: e.pagoPlaneado * e.aRD,
-        seguroMensual: 0,
-        limite: e.limite > 0 ? e.limite * e.aRD : null,
-        penalidad: 0,
-      })),
-  ];
+  const deudas = construirDeudas(estadosPrestamos, estadosTarjetas);
 
   // Ingreso y gasto de referencia: promedio de los últimos 3 meses con ingresos registrados
   const meses = [
