@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { GraficaMensual } from "@/components/GraficaMensual";
 import { Barra, Dato, Encabezado, Panel, SelectorMes, Vacio, leerMes } from "@/components/ui";
-import { cargarAnio, cargarDeudas } from "@/lib/cargas";
+import { PrioridadPlan } from "@/components/PrioridadPlan";
+import { cargarAnio, cargarDeudas, prioridadesDelPlan } from "@/lib/cargas";
 import { contexto, leerTodo, mapaNombres } from "@/lib/datos";
 import { MESES_CORTOS, formatoFecha, mesDe } from "@/lib/fechas";
 import { estadoPersonales, resumenAnual, saldosAhorro } from "@/lib/finanzas/resumen";
@@ -25,6 +26,8 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
   ]);
 
   const resumen = resumenAnual(anio, ingresos, gastos, ahorros, categorias);
+  const plan = prioridadesDelPlan(deudas.estadosPrestamos, deudas.estadosTarjetas);
+  const proximos = plan.orden.slice(0, 3).map((p) => ({ p, d: plan.deudas.find((x) => x.id === p.id)! }));
   const r = resumen.meses[mes - 1];
   const meta = num(hogar.meta_ahorro);
   const limite = num(hogar.limite_deuda);
@@ -118,6 +121,27 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
           </dl>
         </Panel>
       </div>
+
+      {proximos.length > 0 && (
+        <Panel
+          titulo="Tus próximas prioridades con las deudas"
+          className="mt-4"
+          accion={<Link href="/analisis" className="text-sm text-marca hover:underline">Simular un abono</Link>}
+        >
+          <ol className="grid gap-3 md:grid-cols-3">
+            {proximos.map(({ p, d }) => (
+              <li key={p.id} className="rounded-xl bg-fondo p-3 text-sm">
+                <div className="mb-1 flex items-start justify-between gap-2">
+                  <span className="font-semibold">{d.nombre}</span>
+                  <PrioridadPlan p={p} total={plan.total} />
+                </div>
+                <div className="mb-1 tabular-nums text-tenue">Saldo {dinero(d.saldo)}</div>
+                <p className="text-xs text-tenue">{p.motivo}</p>
+              </li>
+            ))}
+          </ol>
+        </Panel>
+      )}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Panel titulo="Gasto por categoría">

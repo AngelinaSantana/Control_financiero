@@ -58,51 +58,122 @@ export function pagoExigible(d: Deuda): number {
 export interface Prioridad {
   id: string;
   puesto: number;
+  /** 1 = sacar del sobregiro, 2 = saldar ya (libera flujo), 3 = por costo real, 4 = sin interés (al final) */
+  paso: 1 | 2 | 3 | 4;
   motivo: string;
 }
 
+export const NOMBRES_PASO: Record<Prioridad["paso"], string> = {
+  1: "Sacar del sobregiro",
+  2: "Saldar ya",
+  3: "Por costo real",
+  4: "Sin interés",
+};
+
+const rdTexto = (n: number) => `RD$${Math.round(n).toLocaleString("es-DO")}`;
+
 /**
- * Orden recomendado para el dinero extra de este mes. Combina, en este orden:
- *  1. Sobregiros: bajar las tarjetas a su límite (cargos extra + daño al historial).
- *  2. Liquidaciones rápidas: deudas que se pueden saldar con el dinero disponible y
- *     que liberan mucho flujo (pago mensual ≥ 8 % del saldo).
- *  3. El resto por costo efectivo (tasa + seguros), descontando la penalidad por
- *     pago anticipado; las deudas al 0 % quedan al final.
+ * Orden de la estrategia Recomendada para el dinero extra:
+ *  1. Sacar del sobregiro: a cada tarjeta por encima de su límite se le abona solo
+ *     lo necesario para bajarla al límite (mayor tasa primero; si empatan, el
+ *     sobregiro más pequeño primero). Luego compite como las demás.
+ *  2. Saldar ya: con lo que quede, saldar las deudas cuyo pago mensual es ≥ 8 % del
+ *     saldo, si el dinero alcanza para dejarlas en cero (la que más libera por peso primero).
+ *  3. El resto por costo real: tasa + seguros/cargos fijos, menos la penalidad por
+ *     pago anticipado.
+ *  4. Al final, las deudas sin interés.
+ *
+ * `inicioDeMes`: los saldos son los de hoy (aún falta el pago normal del mes), así que
+ * para saber si alcanza se usa montoParaSaldar. Dentro de la simulación el pago del mes
+ * ya se descontó y el dinero del sobregiro ya se aplicó.
  */
-export function ordenRecomendado(deudas: Deuda[], disponible: number): Prioridad[] {
+export function ordenRecomendado(deudas: Deuda[], disponible: number, opciones: { inicioDeMes?: boolean } = {}): Prioridad[] {
+  if (!opciones.inicioDeMes) return ordenNucleo(deudas, disponible);
+
+  // Con saldos de hoy se repite exactamente lo que hará la simulación este mes:
+  // 1) cada deuda recibe su pago normal (que ya puede sacar una tarjeta del sobregiro),
+  // 2) el dinero extra baja al límite las tarjetas que sigan en sobregiro,
+  // 3) con lo que quede se aplican los pasos 2 a 4.
+  const despues = deudas.map((d) => ({
+    ...d,
+    saldo: d.saldo <= 0.005 ? 0 : Math.max(d.saldo + d.saldo * (d.tasaAnual / 12) + d.seguroMensual - pagoExigible(d), 0),
+  }));
+  let resto = disponible;
+  const enSobregiro = despues.filter((d) => sobregiro(d) > 0).sort((a, b) => b.tasaAnual - a.tasaAnual || sobregiro(a) - sobregiro(b));
+  const necesitaSobregiro = new Map<string, number>();
+  for (const d of enSobregiro) {
+    const necesita = r2(sobregiro(d) * (1 + d.penalidad));
+    necesitaSobregiro.set(d.id, necesita);
+    const aplicado = Math.min(Math.max(resto, 0), necesita);
+    d.saldo -= aplicado / (1 + d.penalidad);
+    resto -= aplicado;
+  }
+  const nucleo = ordenNucleo(despues, resto);
+  const pasoNucleo = new Map(nucleo.map((p) => [p.id, p]));
+  const costoTexto = (d: Deuda) => `${(costoEfectivoAnual(d) * 100).toFixed(1)} %`;
+
+  const salida: Prioridad[] = [];
+  for (const d of enSobregiro) {
+    const n = pasoNucleo.get(d.id);
+    const necesita = necesitaSobregiro.get(d.id)!;
+    salida.push(n && n.paso === 2
+      ? { id: d.id, puesto: 0, paso: 2, motivo: `Sácala del sobregiro y sáldala completa: ${n.motivo}` }
+      : { id: d.id, puesto: 0, paso: 1, motivo: `Está en sobregiro: primero bajarla a su límite (después de su pago del mes le faltan ${rdTexto(necesita)}): evita cargos extra y cuida tu historial. Luego compite por su costo real (${costoTexto(d)}).` });
+  }
+  const yaListadas = new Set(salida.map((p) => p.id));
+  for (const p of nucleo) {
+    if (yaListadas.has(p.id)) continue;
+    const original = deudas.find((x) => x.id === p.id)!;
+    const nota = sobregiro(original) > 0 ? " Su pago normal de este mes ya la saca del sobregiro." : "";
+    salida.push({ ...p, motivo: p.motivo + nota });
+  }
+  return salida.map((p, i) => ({ ...p, puesto: i + 1 }));
+}
+
+/**
+ * Pasos 1 a 4 con saldos ya descontado el pago del mes (como dentro de la simulación,
+ * donde además el dinero para los sobregiros ya se aplicó).
+ */
+function ordenNucleo(deudas: Deuda[], disponible: number): Prioridad[] {
   const vivas = deudas.filter((d) => d.saldo > 0.005);
   const usados = new Set<string>();
   const salida: Prioridad[] = [];
-  const agregar = (d: Deuda, motivo: string) => {
+  const agregar = (d: Deuda, paso: Prioridad["paso"], motivo: string) => {
     if (usados.has(d.id)) return;
     usados.add(d.id);
-    salida.push({ id: d.id, puesto: salida.length + 1, motivo });
+    salida.push({ id: d.id, puesto: salida.length + 1, paso, motivo });
   };
+  const costoTexto = (d: Deuda) => `${(costoEfectivoAnual(d) * 100).toFixed(1)} %`;
 
+  // Paso 1: tarjetas que siguen en sobregiro (no alcanzó el dinero para bajarlas al límite).
+  let resto = disponible;
   vivas.filter((d) => sobregiro(d) > 0)
     .sort((a, b) => b.tasaAnual - a.tasaAnual || sobregiro(a) - sobregiro(b))
-    .forEach((d) => agregar(d, "Está en sobregiro: genera cargos extra y afecta tu historial de crédito"));
+    .forEach((d) => {
+      resto -= Math.min(Math.max(resto, 0), sobregiro(d) * (1 + d.penalidad));
+      agregar(d, 1, `Primero bajarla a su límite (sobregiro de ${rdTexto(sobregiro(d))}): evita cargos extra y cuida tu historial. Luego compite por su costo real (${costoTexto(d)}).`);
+    });
 
-  let resto = disponible;
+  // Paso 2: saldar ya lo que libera mucho dinero mensual (pago ≥ 8 % del saldo), si alcanza.
   vivas.filter((d) => !usados.has(d.id) && liberacionPorPeso(d) >= 0.08 && d.tasaAnual > 0)
     .sort((a, b) => liberacionPorPeso(b) - liberacionPorPeso(a))
     .forEach((d) => {
-      if (d.saldo <= resto) {
-        resto -= d.saldo;
-        agregar(d, `Se puede saldar ya y libera ${Math.round(pagoBase(d)).toLocaleString("es-DO")} al mes`);
+      const necesita = r2(d.saldo * (1 + d.penalidad));
+      if (necesita <= resto + 0.005) {
+        resto -= necesita;
+        agregar(d, 2, `Con ${rdTexto(necesita)} la saldas y liberas ${rdTexto(pagoBase(d))} cada mes para las demás deudas.`);
       }
     });
 
+  // Pasos 3 y 4: costo real (tasa + seguros − penalidad); sin interés al final.
   const puntaje = (d: Deuda) => costoEfectivoAnual(d) - d.penalidad;
   vivas.filter((d) => !usados.has(d.id))
     .sort((a, b) => (a.tasaAnual === 0 ? 1 : 0) - (b.tasaAnual === 0 ? 1 : 0) || puntaje(b) - puntaje(a))
     .forEach((d) => {
-      const pct = (costoEfectivoAnual(d) * 100).toFixed(1);
-      agregar(d, d.tasaAnual === 0
-        ? "No cobra interés: conviene pagarla normal y abonar a las demás"
-        : d.penalidad > 0
-          ? `Costo efectivo ${pct} % al año, pero cobra ${(d.penalidad * 100).toFixed(1)} % por abonar antes`
-          : `Costo efectivo ${pct} % al año${d.seguroMensual > 0 ? " (incluye seguros)" : ""}`);
+      if (d.tasaAnual === 0) return agregar(d, 4, "No cobra interés: conviene pagarla normal y abonar a las demás.");
+      agregar(d, 3, d.penalidad > 0
+        ? `Costo real ${costoTexto(d)} al año, pero cobra ${(d.penalidad * 100).toFixed(1)} % por abonar antes, por eso baja de prioridad.`
+        : `Costo real ${costoTexto(d)} al año${d.seguroMensual > 0 ? ` (tasa ${(d.tasaAnual * 100).toFixed(1)} % + seguros)` : ""}.`);
     });
   return salida;
 }

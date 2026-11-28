@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { FormPrestamo } from "@/components/FormPrestamo";
 import { Barra, Dato, Encabezado, Insignia, Mensajes, Panel, Vacio } from "@/components/ui";
-import { cargarDeudas } from "@/lib/cargas";
+import { PrioridadPlan } from "@/components/PrioridadPlan";
+import { cargarDeudas, prioridadesDelPlan } from "@/lib/cargas";
 import { contexto, mapaNombres } from "@/lib/datos";
 import { formatoFecha } from "@/lib/fechas";
-import { prioridades } from "@/lib/finanzas/prestamos";
 import { dinero, porcentaje } from "@/lib/formato";
 import { num } from "@/lib/tipos";
 
 export default async function Prestamos({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const ctx = await contexto();
-  const { estadosPrestamos } = await cargarDeudas(ctx);
+  const { estadosPrestamos, estadosTarjetas } = await cargarDeudas(ctx);
   const nPersona = mapaNombres(ctx.personas);
   const activos = estadosPrestamos.filter((e) => e.prestamo.activo);
   const archivados = estadosPrestamos.filter((e) => !e.prestamo.activo);
-  const prio = prioridades(activos);
+  const plan = prioridadesDelPlan(estadosPrestamos, estadosTarjetas);
 
   const saldo = activos.reduce((s, e) => s + e.saldoActual, 0);
   const original = activos.reduce((s, e) => s + num(e.prestamo.monto_original), 0);
@@ -42,8 +42,7 @@ export default async function Prestamos({ searchParams }: { searchParams: Promis
               <thead>
                 <tr>
                   <th>Préstamo</th><th>Responsable</th><th className="num">Tasa</th><th className="num">Saldo</th><th>Avance</th>
-                  <th className="num">Cuota</th><th>Próxima</th><th>Termina</th><th className="num" title="Avalancha: mayor tasa primero">Aval.</th>
-                  <th className="num" title="Bola de nieve: menor saldo primero">B. nieve</th>
+                  <th className="num">Cuota</th><th>Próxima</th><th>Termina</th><th title="Puesto en el plan recomendado, contando préstamos y tarjetas">Prioridad</th>
                 </tr>
               </thead>
               <tbody>
@@ -67,8 +66,7 @@ export default async function Prestamos({ searchParams }: { searchParams: Promis
                       <td className="num">{dinero(num(p.cuota_total))}</td>
                       <td className="whitespace-nowrap">{formatoFecha(e.proxima?.fecha)}</td>
                       <td className="whitespace-nowrap">{formatoFecha(e.fechaFin)}</td>
-                      <td className="num">{prio.avalancha.get(p.id) ?? "—"}</td>
-                      <td className="num">{prio.bolaDeNieve.get(p.id) ?? "—"}</td>
+                      <td><PrioridadPlan p={plan.porId.get(p.id)} total={plan.total} /></td>
                     </tr>
                   );
                 })}
@@ -77,7 +75,9 @@ export default async function Prestamos({ searchParams }: { searchParams: Promis
           </div>
         )}
         <p className="mt-3 text-xs text-tenue">
-          <strong>Avalancha</strong>: abona extra primero al de mayor tasa (ahorras más intereses). <strong>Bola de nieve</strong>: primero al de menor saldo (liberas cuotas más rápido).
+          <strong>Prioridad</strong>: puesto de cada préstamo en tu plan recomendado, junto con tus tarjetas. Primero se sacan las tarjetas del sobregiro,
+          luego se saldan las deudas que liberan mucho dinero cada mes (si alcanza), y el resto va por costo real (tasa + seguros); las de 0 % van al final.
+          Pasa el cursor sobre la prioridad para ver el motivo, y simula tu abono en <a href="/analisis" className="font-semibold text-marca">Análisis</a>.
           Para que el saldo baje solo, registra la cuota en Movimientos y elige el préstamo en “¿Es cuota de un préstamo?”.
         </p>
       </Panel>

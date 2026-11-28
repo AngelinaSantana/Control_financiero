@@ -100,10 +100,15 @@ En Supabase → Authentication → URL Configuration, pon la URL de Vercel como 
   un gasto marcado **"Pago A una tarjeta"** baja la deuda y es una transferencia: no se suma otra vez en los gastos (sí en el servicio de deuda). El interés estimado sale del saldo que queda después del pago programado.
 - **Resumen**: el servicio de deuda es la suma de los gastos en categorías que empiezan con "Deuda". La tasa de ahorro es aportes menos retiros, dividido entre los ingresos.
 - **Préstamos personales**: no cuentan como ingreso ni como gasto, para no inflar los ingresos reales.
-- **Análisis de deudas** (todo se calcula en la app, sin costo): costo real de cada deuda = tasa + seguros fijos repartidos sobre el saldo.
-  El orden recomendado combina: 1) bajar las tarjetas en sobregiro a su límite, 2) saldar ya lo que libera mucho flujo mensual
-  (pago ≥ 8 % del saldo) si alcanza el dinero, 3) el resto por costo real menos la penalidad por pago anticipado, con las deudas al 0 % al final.
-  El simulador usa interés mensual (tasa ÷ 12), compara con avalancha, bola de nieve y un orden propio, y puede reservar un colchón de 1 mes de gastos.
+- **Estrategia Recomendada** (la misma en Inicio, Préstamos, Tarjetas y Análisis; todo se calcula en la app, sin costo).
+  Cada mes se pagan primero las cuotas y mínimos normales; el dinero extra se reparte así:
+  1. **Sacar del sobregiro**: a cada tarjeta por encima de su límite se le abona solo lo necesario para bajarla al límite
+     (mayor tasa primero; si empatan, el sobregiro más pequeño). Después compite como las demás.
+  2. **Saldar ya**: con lo que quede, se saldan las deudas cuyo pago mensual es ≥ 8 % del saldo, si alcanza para dejarlas en cero
+     (la que más libera por peso primero); ese pago queda libre para las demás.
+  3. **Por costo real**: tasa + seguros y cargos fijos, menos la penalidad por pago anticipado.
+  4. **Sin interés** al final.
+  El simulador usa interés mensual (tasa ÷ 12) y compara con Avalancha, Bola de nieve y un orden propio.
 
 ## Desarrollo
 ```bash

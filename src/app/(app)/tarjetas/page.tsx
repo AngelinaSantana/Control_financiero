@@ -2,7 +2,8 @@ import Link from "next/link";
 import { guardarMovTarjeta, guardarTarjeta } from "@/app/acciones";
 import { BotonEliminar } from "@/components/BotonEliminar";
 import { Barra, Campo, Dato, Encabezado, Insignia, Mensajes, Panel, Seleccion, Vacio, claseBoton, claseBotonSec, claseInput } from "@/components/ui";
-import { cargarDeudas } from "@/lib/cargas";
+import { PrioridadPlan } from "@/components/PrioridadPlan";
+import { cargarDeudas, prioridadesDelPlan } from "@/lib/cargas";
 import { contexto, mapaNombres } from "@/lib/datos";
 import { formatoFecha, hoyISO } from "@/lib/fechas";
 import { nivelUtilizacion } from "@/lib/finanzas/tarjetas";
@@ -12,7 +13,8 @@ import { num, type Tarjeta } from "@/lib/tipos";
 export default async function Tarjetas({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const ctx = await contexto();
-  const { estadosTarjetas, movsTarjeta, gastosEnlazados } = await cargarDeudas(ctx);
+  const { estadosPrestamos, estadosTarjetas, movsTarjeta, gastosEnlazados } = await cargarDeudas(ctx);
+  const plan = prioridadesDelPlan(estadosPrestamos, estadosTarjetas);
   const nPersona = mapaNombres(ctx.personas);
   const activas = estadosTarjetas.filter((e) => e.tarjeta.activa);
   const editar = sp.editar ? estadosTarjetas.find((e) => e.tarjeta.id === sp.editar)?.tarjeta : undefined;
@@ -58,7 +60,7 @@ export default async function Tarjetas({ searchParams }: { searchParams: Promise
               <thead>
                 <tr>
                   <th>Tarjeta</th><th>Resp.</th><th className="num">Saldo</th><th>Utilización</th><th className="num">Pago mín.</th>
-                  <th className="num">Pago programado</th><th className="num">Interés mes</th><th className="num">Meses p/ saldar</th><th>Corte / pago</th><th></th>
+                  <th className="num">Pago programado</th><th className="num">Interés mes</th><th className="num">Meses p/ saldar</th><th>Corte / pago</th><th title="Puesto en el plan recomendado, contando préstamos y tarjetas">Prioridad</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -85,6 +87,7 @@ export default async function Tarjetas({ searchParams }: { searchParams: Promise
                         {e.mesesParaSaldar === null ? "—" : e.mesesParaSaldar === Infinity ? <Insignia tono="malo">No alcanza</Insignia> : e.mesesParaSaldar.toFixed(1)}
                       </td>
                       <td className="whitespace-nowrap">{t.dia_corte ?? "—"} / {t.dia_pago ?? "—"}</td>
+                      <td><PrioridadPlan p={plan.porId.get(t.id)} total={plan.total} /></td>
                       <td><Link href={`/tarjetas?editar=${t.id}`} className="text-xs font-medium text-marca hover:underline">Editar</Link></td>
                     </tr>
                   );

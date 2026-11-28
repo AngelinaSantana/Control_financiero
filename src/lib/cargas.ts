@@ -1,4 +1,6 @@
 import { contexto, leerTodo } from "./datos";
+import type { Deuda } from "./finanzas/analisis";
+import { ordenRecomendado, type Prioridad } from "./finanzas/analisis";
 import { estadoPrestamo, type EstadoPrestamo } from "./finanzas/prestamos";
 import { estadoTarjeta, type EstadoTarjeta } from "./finanzas/tarjetas";
 import { hoyISO, iso } from "./fechas";
@@ -60,6 +62,45 @@ async function leerEnlazados(supabase: Ctx["supabase"]): Promise<Gasto[]> {
       supabase, "gastos", (q) => q.or("prestamo_id.not.is.null,tarjeta_id.not.is.null").lte("fecha", hoy), { columna: "fecha" },
     );
   }
+}
+
+/** Préstamos activos y tarjetas con saldo, en RD$, en el formato del análisis de deudas. */
+export function construirDeudas(estadosPrestamos: EstadoPrestamo[], estadosTarjetas: EstadoTarjeta[]): Deuda[] {
+  return [
+    ...estadosPrestamos
+      .filter((e) => e.prestamo.activo && e.saldoActual > 0.5)
+      .map((e) => ({
+        id: e.prestamo.id,
+        nombre: `${e.prestamo.acreedor} – ${e.prestamo.descripcion}`,
+        tipo: "prestamo" as const,
+        saldo: e.saldoActual,
+        tasaAnual: num(e.prestamo.tasa_anual),
+        pagoMinimo: num(e.prestamo.cuota_total),
+        seguroMensual: num(e.prestamo.seguro_cuota),
+        limite: null,
+        penalidad: num(e.prestamo.penalidad_pago_anticipado),
+      })),
+    ...estadosTarjetas
+      .filter((e) => e.tarjeta.activa && e.saldo > 0.5)
+      .map((e) => ({
+        id: e.tarjeta.id,
+        nombre: e.tarjeta.nombre,
+        tipo: "tarjeta" as const,
+        saldo: e.saldo * e.aRD,
+        tasaAnual: num(e.tarjeta.tasa_anual),
+        pagoMinimo: e.pagoPlaneado * e.aRD,
+        seguroMensual: 0,
+        limite: e.limite > 0 ? e.limite * e.aRD : null,
+        penalidad: 0,
+      })),
+  ];
+}
+
+/** Prioridad de cada deuda en el plan recomendado (sin dinero extra), por id. */
+export function prioridadesDelPlan(estadosPrestamos: EstadoPrestamo[], estadosTarjetas: EstadoTarjeta[]) {
+  const deudas = construirDeudas(estadosPrestamos, estadosTarjetas);
+  const orden = ordenRecomendado(deudas, 0, { inicioDeMes: true });
+  return { deudas, orden, porId: new Map<string, Prioridad>(orden.map((p) => [p.id, p])), total: orden.length };
 }
 
 /** Movimientos de un año completo. */
